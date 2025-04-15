@@ -70,6 +70,17 @@ const questionRoutes = require('./routes/questionRoutes');
 const resultRoutes = require('./routes/resultRoutes');
 const achievementRoutes = require('./routes/achievementRoutes');
 const duelRoutes = require('./routes/duelRoutes');
+const courseRoutes = require('./routes/courseRoutes');
+const topicRoutes = require('./routes/topicRoutes');
+const subtopicRoutes = require('./routes/subtopicRoutes');
+const studyRoutes = require('./routes/studyRoutes');
+const coachingRoutes = require('./routes/coachingRoutes');
+const subscriptionRoutes = require('./routes/subscriptionRoutes');
+const studyPlanRoutes = require('./routes/studyPlanRoutes');
+const friendRoutes = require('./routes/friendRoutes');
+const answerRoutes = require('./routes/answerRoutes');
+const duelResultRoutes = require('./routes/duelResultRoutes');
+const analyticsRoutes = require('./routes/analyticsRoutes');
 
 app.use('/api/users', userRoutes);
 app.use('/api/tests', testRoutes);
@@ -77,6 +88,17 @@ app.use('/api/questions', questionRoutes);
 app.use('/api/results', resultRoutes);
 app.use('/api/achievements', achievementRoutes);
 app.use('/api/duels', duelRoutes);
+app.use('/api/courses', courseRoutes);
+app.use('/api/topics', topicRoutes);
+app.use('/api/subtopics', subtopicRoutes);
+app.use('/api/study', studyRoutes);
+app.use('/api/coaching', coachingRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/studyPlans', studyPlanRoutes);
+app.use('/api/friends', friendRoutes);
+app.use('/api/answers', answerRoutes);
+app.use('/api/duel-results', duelResultRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

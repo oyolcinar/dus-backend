@@ -2,13 +2,21 @@ const duelModel = require('../models/duelModel');
 const duelResultModel = require('../models/duelResultModel');
 const userModel = require('../models/userModel');
 const testModel = require('../models/testModel');
+const topicModel = require('../models/topicModel');
 
 const duelController = {
   // Challenge a user to a duel
   async challenge(req, res) {
     try {
       const initiatorId = req.user.userId;
-      const { opponentId, testId } = req.body;
+      const {
+        opponentId,
+        testId,
+        questionCount,
+        branchType,
+        selectionType,
+        branchId,
+      } = req.body;
 
       // Validate input
       if (!opponentId || !testId) {
@@ -36,8 +44,24 @@ const duelController = {
         return res.status(404).json({ message: 'Test not found' });
       }
 
+      // If branch is specified, check if it exists
+      if (branchId) {
+        const branch = await topicModel.getById(branchId);
+        if (!branch) {
+          return res.status(404).json({ message: 'Branch/Topic not found' });
+        }
+      }
+
       // Create duel challenge
-      const newDuel = await duelModel.create(initiatorId, opponentId, testId);
+      const newDuel = await duelModel.create(
+        initiatorId,
+        opponentId,
+        testId,
+        questionCount || 3,
+        branchType || 'mixed',
+        selectionType || 'random',
+        branchId || null,
+      );
 
       res.status(201).json({
         message: 'Duel challenge sent successfully',
@@ -240,6 +264,21 @@ const duelController = {
         opponentScore,
       );
 
+      // Update user stats
+      if (winnerId) {
+        // Update winner stats
+        await userModel.updateDuelStats(winnerId, true);
+
+        // Update loser stats
+        const loserId =
+          winnerId === duel.initiator_id ? duel.opponent_id : duel.initiator_id;
+        await userModel.updateDuelStats(loserId, false);
+      } else {
+        // Draw - update both participants
+        await userModel.updateDuelStats(duel.initiator_id, null);
+        await userModel.updateDuelStats(duel.opponent_id, null);
+      }
+
       res.json({
         message: 'Duel result submitted successfully',
         result,
@@ -250,26 +289,40 @@ const duelController = {
     }
   },
 
+  // Get duels by branch/topic
+  async getDuelsByBranch(req, res) {
+    try {
+      const branchId = req.params.branchId;
+
+      // Check if branch exists
+      const branch = await topicModel.getById(branchId);
+      if (!branch) {
+        return res.status(404).json({ message: 'Branch/Topic not found' });
+      }
+
+      const duels = await duelModel.getByBranchId(branchId);
+      res.json(duels);
+    } catch (error) {
+      console.error('Get duels by branch error:', error);
+      res.status(500).json({ message: 'Failed to retrieve duels' });
+    }
+  },
+
   // Get user's duel statistics
   async getUserStats(req, res) {
     try {
       const userId = req.user.userId;
 
-      const stats = await duelResultModel.getUserStats(userId);
+      const stats = await userModel.getDuelStats(userId);
+
       res.json({
         userId,
-        wins: parseInt(stats.wins) || 0,
-        losses: parseInt(stats.losses) || 0,
-        totalDuels: parseInt(stats.wins) + parseInt(stats.losses) || 0,
-        winRate:
-          stats.wins > 0
-            ? (
-                (parseInt(stats.wins) /
-                  (parseInt(stats.wins) + parseInt(stats.losses))) *
-                100
-              ).toFixed(2)
-            : 0,
-        averageScore: parseFloat(stats.avg_score).toFixed(2) || 0,
+        totalDuels: parseInt(stats.total_duels) || 0,
+        wins: parseInt(stats.duels_won) || 0,
+        losses: parseInt(stats.duels_lost) || 0,
+        longestLosingStreak: parseInt(stats.longest_losing_streak) || 0,
+        currentLosingStreak: parseInt(stats.current_losing_streak) || 0,
+        winRate: parseFloat(stats.win_rate).toFixed(2) || 0,
       });
     } catch (error) {
       console.error('Get user stats error:', error);

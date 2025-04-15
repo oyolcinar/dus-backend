@@ -2,14 +2,30 @@ const db = require('../config/db');
 
 const duelModel = {
   // Create a new duel challenge
-  async create(initiatorId, opponentId, testId) {
+  async create(
+    initiatorId,
+    opponentId,
+    testId,
+    questionCount = 3,
+    branchType = 'mixed',
+    selectionType = 'random',
+    branchId = null,
+  ) {
     const query = `
-      INSERT INTO duels (initiator_id, opponent_id, test_id, status)
-      VALUES ($1, $2, $3, 'pending')
-      RETURNING duel_id, initiator_id, opponent_id, test_id, status, start_time, end_time, created_at
+      INSERT INTO duels (initiator_id, opponent_id, test_id, status, question_count, branch_type, selection_type, branch_id)
+      VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
+      RETURNING duel_id, initiator_id, opponent_id, test_id, status, start_time, end_time, created_at, question_count, branch_type, selection_type, branch_id
     `;
 
-    const values = [initiatorId, opponentId, testId];
+    const values = [
+      initiatorId,
+      opponentId,
+      testId,
+      questionCount,
+      branchType,
+      selectionType,
+      branchId,
+    ];
     const result = await db.query(query, values);
 
     return result.rows[0];
@@ -19,7 +35,7 @@ const duelModel = {
   async getById(duelId) {
     const query = `
       SELECT d.duel_id, d.initiator_id, d.opponent_id, d.test_id, d.status, 
-             d.start_time, d.end_time, d.created_at,
+             d.start_time, d.end_time, d.created_at, d.question_count, d.branch_type, d.selection_type, d.branch_id,
              i.username as initiator_username, 
              o.username as opponent_username,
              t.title as test_title
@@ -38,7 +54,8 @@ const duelModel = {
   async getPendingByUserId(userId) {
     const query = `
       SELECT d.duel_id, d.initiator_id, d.opponent_id, d.test_id, d.status, 
-             d.created_at, i.username as initiator_username, 
+             d.created_at, d.question_count, d.branch_type, d.selection_type, d.branch_id,
+             i.username as initiator_username, 
              o.username as opponent_username, t.title as test_title
       FROM duels d
       JOIN users i ON d.initiator_id = i.user_id
@@ -56,7 +73,8 @@ const duelModel = {
   async getActiveByUserId(userId) {
     const query = `
       SELECT d.duel_id, d.initiator_id, d.opponent_id, d.test_id, d.status, 
-             d.start_time, d.created_at, i.username as initiator_username, 
+             d.start_time, d.created_at, d.question_count, d.branch_type, d.selection_type, d.branch_id,
+             i.username as initiator_username, 
              o.username as opponent_username, t.title as test_title
       FROM duels d
       JOIN users i ON d.initiator_id = i.user_id
@@ -74,7 +92,7 @@ const duelModel = {
   async getCompletedByUserId(userId) {
     const query = `
       SELECT d.duel_id, d.initiator_id, d.opponent_id, d.test_id, d.status, 
-             d.start_time, d.end_time, d.created_at, 
+             d.start_time, d.end_time, d.created_at, d.question_count, d.branch_type, d.selection_type, d.branch_id,
              i.username as initiator_username, 
              o.username as opponent_username,
              t.title as test_title,
@@ -99,7 +117,7 @@ const duelModel = {
       UPDATE duels
       SET status = 'active', start_time = NOW()
       WHERE duel_id = $1 AND status = 'pending'
-      RETURNING duel_id, initiator_id, opponent_id, test_id, status, start_time, end_time, created_at
+      RETURNING duel_id, initiator_id, opponent_id, test_id, status, start_time, end_time, created_at, question_count, branch_type, selection_type, branch_id
     `;
 
     const result = await db.query(query, [duelId]);
@@ -124,11 +142,31 @@ const duelModel = {
       UPDATE duels
       SET status = 'completed', end_time = NOW()
       WHERE duel_id = $1 AND status = 'active'
-      RETURNING duel_id, initiator_id, opponent_id, test_id, status, start_time, end_time, created_at
+      RETURNING duel_id, initiator_id, opponent_id, test_id, status, start_time, end_time, created_at, question_count, branch_type, selection_type, branch_id
     `;
 
     const result = await db.query(query, [duelId]);
     return result.rows[0];
+  },
+
+  // Get duels by branch/topic ID
+  async getByBranchId(branchId) {
+    const query = `
+      SELECT d.duel_id, d.initiator_id, d.opponent_id, d.test_id, d.status, 
+             d.start_time, d.end_time, d.created_at, d.question_count, d.branch_type, d.selection_type, d.branch_id,
+             i.username as initiator_username, 
+             o.username as opponent_username,
+             t.title as test_title
+      FROM duels d
+      JOIN users i ON d.initiator_id = i.user_id
+      JOIN users o ON d.opponent_id = o.user_id
+      JOIN tests t ON d.test_id = t.test_id
+      WHERE d.branch_id = $1
+      ORDER BY d.created_at DESC
+    `;
+
+    const result = await db.query(query, [branchId]);
+    return result.rows;
   },
 };
 
