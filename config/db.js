@@ -1,13 +1,22 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
+// Debug environment variables
+console.log('Environment variables check:');
+console.log('DB_USER exists:', process.env.DB_USER ? 'YES' : 'NO');
+console.log('DB_PASSWORD exists:', process.env.DB_PASSWORD ? 'YES' : 'NO');
+console.log('DB_HOST exists:', process.env.DB_HOST ? 'YES' : 'NO');
+console.log('DB_PORT exists:', process.env.DB_PORT ? 'YES' : 'NO');
+console.log('DB_DATABASE exists:', process.env.DB_DATABASE ? 'YES' : 'NO');
+
+// Use direct parameter approach instead of connection string
 const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD,
   host: process.env.DB_HOST || 'localhost',
+  port: Number(process.env.DB_PORT || 5432),
   database: process.env.DB_DATABASE || 'postgres',
-  password: process.env.DB_PASSWORD, // Get password from environment variable
-  port: process.env.DB_PORT || 5432,
-  ssl: { rejectUnauthorized: false }, // Required for Supabase connections
+  ssl: { rejectUnauthorized: false },
 });
 
 // Test connection
@@ -23,17 +32,3 @@ module.exports = {
   query: (text, params) => pool.query(text, params),
   getClient: () => pool.connect(),
 };
-
-// Add this specific connection test
-console.log('Attempting direct connection with full connection string...');
-const { Client } = require('pg');
-const client = new Client({
-  connectionString: `postgresql://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_DATABASE}`,
-  ssl: { rejectUnauthorized: false },
-});
-
-client
-  .connect()
-  .then(() => console.log('Direct connection successful'))
-  .catch((err) => console.error('Direct connection error:', err))
-  .finally(() => client.end());
