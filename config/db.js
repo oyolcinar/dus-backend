@@ -23,3 +23,17 @@ module.exports = {
   query: (text, params) => pool.query(text, params),
   getClient: () => pool.connect(),
 };
+
+// Add this specific connection test
+console.log('Attempting direct connection with full connection string...');
+const { Client } = require('pg');
+const client = new Client({
+  connectionString: `postgresql://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_DATABASE}`,
+  ssl: { rejectUnauthorized: false },
+});
+
+client
+  .connect()
+  .then(() => console.log('Direct connection successful'))
+  .catch((err) => console.error('Direct connection error:', err))
+  .finally(() => client.end());

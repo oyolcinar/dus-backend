@@ -44,10 +44,11 @@ const swaggerOptions = {
       version: '1.0.0',
       description: 'API documentation for the test application',
     },
+    // Update this part of your swaggerOptions
     servers: [
       {
-        url: `http://localhost:${PORT}`,
-        description: 'Development server',
+        url: process.env.API_URL || `http://localhost:${PORT}`,
+        description: 'API Server',
       },
     ],
     ...swaggerSecurity, // Add this line
