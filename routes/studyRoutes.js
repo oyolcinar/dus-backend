@@ -287,15 +287,12 @@ router.get('/analytics/errors',
  *             type: object
  *             required:
  *               - subtopicId
- *               - errorCount
- *               - totalAttempts
+ *               - isError
  *             properties:
  *               subtopicId:
  *                 type: integer
- *               errorCount:
- *                 type: integer
- *               totalAttempts:
- *                 type: integer
+ *               isError:
+ *                 type: boolean
  *     responses:
  *       200:
  *         description: Error analytics updated successfully

@@ -63,6 +63,26 @@ const studyController = {
     }
   },
 
+  // Get subtopic progress
+  async getSubtopicProgress(req, res) {
+    try {
+      const userId = req.user.userId;
+      const subtopicId = req.params.subtopicId;
+
+      // Check if subtopic exists
+      const subtopic = await subtopicModel.getById(subtopicId);
+      if (!subtopic) {
+        return res.status(404).json({ message: 'Subtopic not found' });
+      }
+
+      const progress = await progressModel.getSubtopicProgress(userId, subtopicId);
+      res.json(progress || { message: 'No progress found for this subtopic' });
+    } catch (error) {
+      console.error('Get subtopic progress error:', error);
+      res.status(500).json({ message: 'Failed to retrieve subtopic progress' });
+    }
+  },
+
   // Start a study session
   async startSession(req, res) {
     try {
@@ -99,8 +119,8 @@ const studyController = {
     }
   },
 
-  // Add session detail
-  async addSessionDetail(req, res) {
+  // Add session detail (renamed from addSessionDetail to match route)
+  async addSubtopicToSession(req, res) {
     try {
       const sessionId = req.params.id;
       const { subtopicId, duration } = req.body;
@@ -142,8 +162,8 @@ const studyController = {
     }
   },
 
-  // Get session details
-  async getSessionDetails(req, res) {
+  // Get session details (renamed from getSessionDetails to match route)
+  async getSessionById(req, res) {
     try {
       const sessionId = req.params.id;
 
@@ -199,7 +219,7 @@ const studyController = {
   },
 
   // Get user's error analytics
-  async getUserErrorAnalytics(req, res) {
+  async getErrorAnalytics(req, res) {
     try {
       const userId = req.user.userId;
 
