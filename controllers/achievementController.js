@@ -1,4 +1,6 @@
 const achievementModel = require('../models/achievementModel');
+const { createClient } = require('@supabase/supabase-js');
+const { supabaseUrl, supabaseKey } = require('../config/supabase');
 
 const achievementController = {
   // Create a new achievement (admin only)
@@ -13,12 +15,18 @@ const achievementController = {
           .json({ message: 'Name and requirements are required' });
       }
 
-      // Create achievement
+      // Initialize Supabase client for potential future use
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      // Create achievement in Postgres DB
       const newAchievement = await achievementModel.create(
         name,
         description || null,
         requirements,
       );
+
+      // Log the action for audit purposes
+      console.log(`User ${req.user.userId} (${req.user.email}) created achievement: ${newAchievement.achievement_id}`);
 
       res.status(201).json({
         message: 'Achievement created successfully',
@@ -70,6 +78,9 @@ const achievementController = {
         return res.status(404).json({ message: 'Achievement not found' });
       }
 
+      // Initialize Supabase client for potential future use
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
       // Update achievement
       const updatedAchievement = await achievementModel.update(
         achievementId,
@@ -79,6 +90,9 @@ const achievementController = {
           : existingAchievement.description,
         requirements || existingAchievement.requirements,
       );
+
+      // Log the action for audit purposes
+      console.log(`User ${req.user.userId} (${req.user.email}) updated achievement: ${achievementId}`);
 
       res.json({
         message: 'Achievement updated successfully',
@@ -101,8 +115,14 @@ const achievementController = {
         return res.status(404).json({ message: 'Achievement not found' });
       }
 
+      // Initialize Supabase client for potential future use
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
       // Delete achievement
       await achievementModel.delete(achievementId);
+
+      // Log the action for audit purposes
+      console.log(`User ${req.user.userId} (${req.user.email}) deleted achievement: ${achievementId}`);
 
       res.json({ message: 'Achievement deleted successfully' });
     } catch (error) {
@@ -123,14 +143,36 @@ const achievementController = {
           .json({ message: 'User ID and achievement ID are required' });
       }
 
+      // Initialize Supabase client to validate user exists in auth
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
       // Check if achievement exists
       const achievement = await achievementModel.getById(achievementId);
       if (!achievement) {
         return res.status(404).json({ message: 'Achievement not found' });
       }
 
+      // Check if user exists (via Supabase)
+      try {
+        const { data: userExists, error } = await supabase
+          .from('users')
+          .select('user_id')
+          .eq('user_id', userId)
+          .single();
+
+        if (error || !userExists) {
+          return res.status(404).json({ message: 'User not found' });
+        }
+      } catch (error) {
+        console.error('Supabase user check error:', error);
+        // Continue with the process even if Supabase check fails as we have our own database
+      }
+
       // Award achievement
       await achievementModel.awardToUser(userId, achievementId);
+
+      // Log the action for audit purposes
+      console.log(`User ${req.user.userId} (${req.user.email}) awarded achievement ${achievementId} to user ${userId}`);
 
       res.json({ message: 'Achievement awarded successfully' });
     } catch (error) {
@@ -143,6 +185,9 @@ const achievementController = {
   async getUserAchievements(req, res) {
     try {
       const userId = req.user.userId;
+
+      // Initialize Supabase client for potential future audit logging
+      const supabase = createClient(supabaseUrl, supabaseKey);
 
       const achievements = await achievementModel.getUserAchievements(userId);
       res.json(achievements);
