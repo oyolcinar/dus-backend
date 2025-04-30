@@ -1,4 +1,10 @@
 const testModel = require('../models/testModel');
+// Import Supabase client for any direct operations
+const { createClient } = require('@supabase/supabase-js');
+const { supabaseUrl, supabaseKey } = require('../config/supabase');
+
+// Initialize Supabase client
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const testController = {
   // Create a new test
@@ -18,6 +24,13 @@ const testController = {
         return res
           .status(400)
           .json({ message: 'Difficulty level must be between 1 and 5' });
+      }
+
+      // Check if user has admin permissions
+      if (req.user.role !== 'admin') {
+        return res
+          .status(403)
+          .json({ message: 'Only administrators can create tests' });
       }
 
       // Create test
@@ -77,6 +90,13 @@ const testController = {
         return res.status(404).json({ message: 'Test not found' });
       }
 
+      // Check if user has admin permissions
+      if (req.user.role !== 'admin') {
+        return res
+          .status(403)
+          .json({ message: 'Only administrators can update tests' });
+      }
+
       // Validate difficulty level if provided
       if (
         difficultyLevel !== undefined &&
@@ -114,6 +134,13 @@ const testController = {
       const existingTest = await testModel.getById(testId);
       if (!existingTest) {
         return res.status(404).json({ message: 'Test not found' });
+      }
+
+      // Check if user has admin permissions
+      if (req.user.role !== 'admin') {
+        return res
+          .status(403)
+          .json({ message: 'Only administrators can delete tests' });
       }
 
       // Delete test

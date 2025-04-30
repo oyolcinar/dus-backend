@@ -4,6 +4,12 @@ const {
   errorAnalyticsModel,
 } = require('../models/studyModels');
 const subtopicModel = require('../models/subtopicModel');
+// Import Supabase client
+const { createClient } = require('@supabase/supabase-js');
+const { supabaseUrl, supabaseKey } = require('../config/supabase');
+
+// Initialize Supabase client
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const studyController = {
   // Update study progress
@@ -18,12 +24,10 @@ const studyController = {
         repetitionCount === undefined ||
         masteryLevel === undefined
       ) {
-        return res
-          .status(400)
-          .json({
-            message:
-              'Subtopic ID, repetition count, and mastery level are required',
-          });
+        return res.status(400).json({
+          message:
+            'Subtopic ID, repetition count, and mastery level are required',
+        });
       }
 
       // Check if subtopic exists
@@ -75,7 +79,10 @@ const studyController = {
         return res.status(404).json({ message: 'Subtopic not found' });
       }
 
-      const progress = await progressModel.getSubtopicProgress(userId, subtopicId);
+      const progress = await progressModel.getSubtopicProgress(
+        userId,
+        subtopicId,
+      );
       res.json(progress || { message: 'No progress found for this subtopic' });
     } catch (error) {
       console.error('Get subtopic progress error:', error);

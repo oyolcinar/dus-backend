@@ -1,8 +1,6 @@
 const courseModel = require('../models/courseModel');
 const topicModel = require('../models/topicModel');
 const subtopicModel = require('../models/subtopicModel');
-const { createClient } = require('@supabase/supabase-js');
-const { supabaseUrl, supabaseKey } = require('../config/supabase');
 
 const courseController = {
   // Create a new course
@@ -15,9 +13,6 @@ const courseController = {
         return res.status(400).json({ message: 'Title is required' });
       }
 
-      // Initialize Supabase client for potential future use
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
       // Create course
       const newCourse = await courseModel.create(
         title,
@@ -26,7 +21,9 @@ const courseController = {
       );
 
       // Log admin activity
-      console.log(`Admin ${req.user.userId} (${req.user.email}) created course: ${title}`);
+      console.log(
+        `Admin ${req.user.userId} (${req.user.email}) created course: ${title}`,
+      );
 
       res.status(201).json({
         message: 'Course created successfully',
@@ -43,9 +40,6 @@ const courseController = {
     try {
       // Check if we should filter courses by subscription type
       const subscriptionType = req.query.subscriptionType;
-      
-      // Initialize Supabase client for potential future use
-      const supabase = createClient(supabaseUrl, supabaseKey);
 
       let courses;
       if (subscriptionType) {
@@ -56,8 +50,8 @@ const courseController = {
 
       // If user is logged in, add info about completed topics/subtopics
       if (req.user) {
-        // Getting this would require another set of queries to get progress for the user
-        // This is a placeholder for future enhancement
+        // This capability will be implemented separately if needed
+        // For now, we just return the courses
       }
 
       res.json(courses);
@@ -70,10 +64,7 @@ const courseController = {
   // Get course by ID with topics and subtopics
   async getById(req, res) {
     try {
-      const courseId = req.params.id;
-
-      // Initialize Supabase client for potential future use
-      const supabase = createClient(supabaseUrl, supabaseKey);
+      const courseId = parseInt(req.params.id);
 
       const course = await courseModel.getById(courseId);
       if (!course) {
@@ -96,8 +87,8 @@ const courseController = {
 
       // If user is logged in, add progress information for each subtopic
       if (req.user) {
-        // This would involve getting the user's progress for each subtopic
-        // This is a placeholder for future enhancement
+        // This can be implemented in the future to add user-specific progress
+        // to each subtopic in the response
       }
 
       res.json({
@@ -113,11 +104,8 @@ const courseController = {
   // Update course
   async update(req, res) {
     try {
-      const courseId = req.params.id;
+      const courseId = parseInt(req.params.id);
       const { title, description, imageUrl } = req.body;
-
-      // Initialize Supabase client for potential future use
-      const supabase = createClient(supabaseUrl, supabaseKey);
 
       // Check if course exists
       const existingCourse = await courseModel.getById(courseId);
@@ -134,7 +122,9 @@ const courseController = {
       );
 
       // Log admin activity
-      console.log(`Admin ${req.user.userId} (${req.user.email}) updated course ID: ${courseId}`);
+      console.log(
+        `Admin ${req.user.userId} (${req.user.email}) updated course ID: ${courseId}`,
+      );
 
       res.json({
         message: 'Course updated successfully',
@@ -149,10 +139,7 @@ const courseController = {
   // Delete course
   async delete(req, res) {
     try {
-      const courseId = req.params.id;
-
-      // Initialize Supabase client for potential future use
-      const supabase = createClient(supabaseUrl, supabaseKey);
+      const courseId = parseInt(req.params.id);
 
       // Check if course exists
       const existingCourse = await courseModel.getById(courseId);
@@ -175,8 +162,9 @@ const courseController = {
 
         // If we have topics with subtopics, it's safer to prevent deletion
         if (hasSubtopics) {
-          return res.status(400).json({ 
-            message: 'Cannot delete course with existing topics and subtopics. Please delete subtopics and topics first.'
+          return res.status(400).json({
+            message:
+              'Cannot delete course with existing topics and subtopics. Please delete subtopics and topics first.',
           });
         }
       }
@@ -185,7 +173,9 @@ const courseController = {
       await courseModel.delete(courseId);
 
       // Log admin activity
-      console.log(`Admin ${req.user.userId} (${req.user.email}) deleted course ID: ${courseId}`);
+      console.log(
+        `Admin ${req.user.userId} (${req.user.email}) deleted course ID: ${courseId}`,
+      );
 
       res.json({ message: 'Course deleted successfully' });
     } catch (error) {
@@ -198,10 +188,7 @@ const courseController = {
   async getUserProgress(req, res) {
     try {
       const userId = req.user.userId;
-      const courseId = req.params.id;
-
-      // Initialize Supabase client for potential future use
-      const supabase = createClient(supabaseUrl, supabaseKey);
+      const courseId = parseInt(req.params.id);
 
       // Check if course exists
       const course = await courseModel.getById(courseId);
@@ -215,9 +202,10 @@ const courseController = {
       // Calculate overall course completion percentage
       const completedSubtopics = progressData.completedSubtopics || 0;
       const totalSubtopics = progressData.totalSubtopics || 0;
-      const completionPercentage = totalSubtopics > 0 
-        ? Math.round((completedSubtopics / totalSubtopics) * 100) 
-        : 0;
+      const completionPercentage =
+        totalSubtopics > 0
+          ? Math.round((completedSubtopics / totalSubtopics) * 100)
+          : 0;
 
       res.json({
         courseId,
@@ -226,7 +214,7 @@ const courseController = {
         totalSubtopics,
         completionPercentage,
         lastAccessed: progressData.lastAccessed,
-        topicsProgress: progressData.topicsProgress || []
+        topicsProgress: progressData.topicsProgress || [],
       });
     } catch (error) {
       console.error('Get user progress error:', error);
@@ -239,13 +227,10 @@ const courseController = {
     try {
       const userId = req.user.userId;
       const { subtopicId } = req.body;
-      
+
       if (!subtopicId) {
         return res.status(400).json({ message: 'Subtopic ID is required' });
       }
-
-      // Initialize Supabase client for potential future use
-      const supabase = createClient(supabaseUrl, supabaseKey);
 
       // Check if subtopic exists
       const subtopic = await subtopicModel.getById(subtopicId);
@@ -254,19 +239,22 @@ const courseController = {
       }
 
       // Mark subtopic as completed
-      const result = await courseModel.markSubtopicCompleted(userId, subtopicId);
+      const result = await courseModel.markSubtopicCompleted(
+        userId,
+        subtopicId,
+      );
 
       res.json({
         message: 'Subtopic marked as completed',
         subtopicId,
         userId,
-        completedAt: result.completedAt
+        completedAt: result.completedAt,
       });
     } catch (error) {
       console.error('Mark subtopic completed error:', error);
       res.status(500).json({ message: 'Failed to mark subtopic as completed' });
     }
-  }
+  },
 };
 
 module.exports = courseController;

@@ -122,12 +122,28 @@ const topicController = {
         return res.status(404).json({ message: 'Topic not found' });
       }
 
+      // Check if topic has subtopics
+      const subtopics = await subtopicModel.getByTopicId(topicId);
+      if (subtopics && subtopics.length > 0) {
+        return res.status(400).json({
+          message: `Cannot delete topic because it has ${subtopics.length} subtopics. Delete all subtopics first or use the cascade delete option.`,
+        });
+      }
+
       // Delete topic
       await topicModel.delete(topicId);
 
       res.json({ message: 'Topic deleted successfully' });
     } catch (error) {
       console.error('Delete topic error:', error);
+
+      // Provide more specific error message if it's related to existing subtopics
+      if (error.message && error.message.includes('Cannot delete topic')) {
+        return res.status(400).json({
+          message: error.message,
+        });
+      }
+
       res.status(500).json({ message: 'Failed to delete topic' });
     }
   },

@@ -15,10 +15,7 @@ const achievementController = {
           .json({ message: 'Name and requirements are required' });
       }
 
-      // Initialize Supabase client for potential future use
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
-      // Create achievement in Postgres DB
+      // Create achievement using the updated model
       const newAchievement = await achievementModel.create(
         name,
         description || null,
@@ -26,7 +23,9 @@ const achievementController = {
       );
 
       // Log the action for audit purposes
-      console.log(`User ${req.user.userId} (${req.user.email}) created achievement: ${newAchievement.achievement_id}`);
+      console.log(
+        `User ${req.user.userId} (${req.user.email}) created achievement: ${newAchievement.achievement_id}`,
+      );
 
       res.status(201).json({
         message: 'Achievement created successfully',
@@ -78,9 +77,6 @@ const achievementController = {
         return res.status(404).json({ message: 'Achievement not found' });
       }
 
-      // Initialize Supabase client for potential future use
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
       // Update achievement
       const updatedAchievement = await achievementModel.update(
         achievementId,
@@ -92,7 +88,9 @@ const achievementController = {
       );
 
       // Log the action for audit purposes
-      console.log(`User ${req.user.userId} (${req.user.email}) updated achievement: ${achievementId}`);
+      console.log(
+        `User ${req.user.userId} (${req.user.email}) updated achievement: ${achievementId}`,
+      );
 
       res.json({
         message: 'Achievement updated successfully',
@@ -115,14 +113,13 @@ const achievementController = {
         return res.status(404).json({ message: 'Achievement not found' });
       }
 
-      // Initialize Supabase client for potential future use
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
       // Delete achievement
       await achievementModel.delete(achievementId);
 
       // Log the action for audit purposes
-      console.log(`User ${req.user.userId} (${req.user.email}) deleted achievement: ${achievementId}`);
+      console.log(
+        `User ${req.user.userId} (${req.user.email}) deleted achievement: ${achievementId}`,
+      );
 
       res.json({ message: 'Achievement deleted successfully' });
     } catch (error) {
@@ -143,7 +140,7 @@ const achievementController = {
           .json({ message: 'User ID and achievement ID are required' });
       }
 
-      // Initialize Supabase client to validate user exists in auth
+      // Initialize Supabase client to validate user exists
       const supabase = createClient(supabaseUrl, supabaseKey);
 
       // Check if achievement exists
@@ -172,7 +169,9 @@ const achievementController = {
       await achievementModel.awardToUser(userId, achievementId);
 
       // Log the action for audit purposes
-      console.log(`User ${req.user.userId} (${req.user.email}) awarded achievement ${achievementId} to user ${userId}`);
+      console.log(
+        `User ${req.user.userId} (${req.user.email}) awarded achievement ${achievementId} to user ${userId}`,
+      );
 
       res.json({ message: 'Achievement awarded successfully' });
     } catch (error) {
@@ -185,10 +184,6 @@ const achievementController = {
   async getUserAchievements(req, res) {
     try {
       const userId = req.user.userId;
-
-      // Initialize Supabase client for potential future audit logging
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
       const achievements = await achievementModel.getUserAchievements(userId);
       res.json(achievements);
     } catch (error) {

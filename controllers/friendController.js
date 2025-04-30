@@ -26,6 +26,25 @@ const friendController = {
         return res.status(404).json({ message: 'User not found' });
       }
 
+      // Check friendship status
+      const status = await friendModel.getFriendshipStatus(userId, friendId);
+      if (status === 'accepted') {
+        return res
+          .status(400)
+          .json({ message: 'You are already friends with this user' });
+      } else if (status === 'pending') {
+        return res
+          .status(400)
+          .json({
+            message: 'You have already sent a friend request to this user',
+          });
+      } else if (status === 'incoming_request') {
+        return res.status(400).json({
+          message:
+            'This user has already sent you a friend request. You can accept it from your pending requests.',
+        });
+      }
+
       // Send request
       const request = await friendModel.sendRequest(userId, friendId);
 
@@ -111,6 +130,14 @@ const friendController = {
       const userId = req.user.userId;
       const { friendId } = req.params;
 
+      // Check friendship status first
+      const status = await friendModel.getFriendshipStatus(userId, friendId);
+      if (status !== 'accepted') {
+        return res
+          .status(404)
+          .json({ message: 'Friend relationship not found' });
+      }
+
       const result = await friendModel.removeFriend(userId, friendId);
       if (!result) {
         return res.status(404).json({ message: 'Friend not found' });
@@ -120,6 +147,33 @@ const friendController = {
     } catch (error) {
       console.error('Remove friend error:', error);
       res.status(500).json({ message: 'Failed to remove friend' });
+    }
+  },
+
+  // Get friendship status
+  async getFriendshipStatus(req, res) {
+    try {
+      const userId = req.user.userId;
+      const { friendId } = req.params;
+
+      // Validate
+      if (userId === parseInt(friendId)) {
+        return res
+          .status(400)
+          .json({ message: 'Cannot check friendship with yourself' });
+      }
+
+      // Check if friend exists
+      const friend = await userModel.findById(friendId);
+      if (!friend) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      const status = await friendModel.getFriendshipStatus(userId, friendId);
+      res.json({ status });
+    } catch (error) {
+      console.error('Get friendship status error:', error);
+      res.status(500).json({ message: 'Failed to retrieve friendship status' });
     }
   },
 };

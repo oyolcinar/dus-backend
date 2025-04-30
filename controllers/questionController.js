@@ -9,17 +9,38 @@ const questionController = {
 
       // Validate input
       if (!testId || !questionText || !correctAnswer) {
+        return res.status(400).json({
+          message: 'Test ID, question text, and correct answer are required',
+        });
+      }
+
+      // Check user permissions (admin or instructor role)
+      if (req.user.role !== 'admin' && req.user.role !== 'instructor') {
         return res
-          .status(400)
-          .json({
-            message: 'Test ID, question text, and correct answer are required',
-          });
+          .status(403)
+          .json({ message: 'You do not have permission to create questions' });
       }
 
       // Check if test exists
       const test = await testModel.getById(testId);
       if (!test) {
         return res.status(404).json({ message: 'Test not found' });
+      }
+
+      // Validate options format if provided
+      if (options && !Array.isArray(options)) {
+        return res
+          .status(400)
+          .json({ message: 'Options must be provided as an array' });
+      }
+
+      // Validate correctAnswer is within available options
+      if (options && !options.includes(correctAnswer)) {
+        return res
+          .status(400)
+          .json({
+            message: 'Correct answer must be one of the provided options',
+          });
       }
 
       // Create question
@@ -82,18 +103,45 @@ const questionController = {
       const questionId = req.params.id;
       const { questionText, options, correctAnswer } = req.body;
 
+      // Check user permissions (admin or instructor role)
+      if (req.user.role !== 'admin' && req.user.role !== 'instructor') {
+        return res
+          .status(403)
+          .json({ message: 'You do not have permission to update questions' });
+      }
+
       // Check if question exists
       const existingQuestion = await questionModel.getById(questionId);
       if (!existingQuestion) {
         return res.status(404).json({ message: 'Question not found' });
       }
 
+      // Validate options format if provided
+      if (options !== undefined && !Array.isArray(options)) {
+        return res
+          .status(400)
+          .json({ message: 'Options must be provided as an array' });
+      }
+
+      // Determine the correct answer to use
+      const finalCorrectAnswer =
+        correctAnswer || existingQuestion.correct_answer;
+
+      // Validate correctAnswer is within available options
+      const finalOptions =
+        options !== undefined ? options : existingQuestion.options;
+      if (finalOptions && !finalOptions.includes(finalCorrectAnswer)) {
+        return res
+          .status(400)
+          .json({ message: 'Correct answer must be one of the options' });
+      }
+
       // Update question
       const updatedQuestion = await questionModel.update(
         questionId,
         questionText || existingQuestion.question_text,
-        options !== undefined ? options : existingQuestion.options,
-        correctAnswer || existingQuestion.correct_answer,
+        finalOptions,
+        finalCorrectAnswer,
       );
 
       res.json({
@@ -110,6 +158,13 @@ const questionController = {
   async delete(req, res) {
     try {
       const questionId = req.params.id;
+
+      // Check user permissions (admin or instructor role)
+      if (req.user.role !== 'admin' && req.user.role !== 'instructor') {
+        return res
+          .status(403)
+          .json({ message: 'You do not have permission to delete questions' });
+      }
 
       // Check if question exists
       const existingQuestion = await questionModel.getById(questionId);

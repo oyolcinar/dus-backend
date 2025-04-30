@@ -1,4 +1,10 @@
 const studyPlanModel = require('../models/studyPlanModel');
+// Import Supabase client for any direct operations
+const { createClient } = require('@supabase/supabase-js');
+const { supabaseUrl, supabaseKey } = require('../config/supabase');
+
+// Initialize Supabase client
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const studyPlanController = {
   // Create a new study plan
@@ -81,6 +87,16 @@ const studyPlanController = {
         return res.status(404).json({ message: 'Study plan not found' });
       }
 
+      // Verify ownership if not admin
+      if (
+        existingPlan.user_id !== req.user.userId &&
+        req.user.role !== 'admin'
+      ) {
+        return res
+          .status(403)
+          .json({ message: 'You can only update your own study plans' });
+      }
+
       // Update plan
       const updatedPlan = await studyPlanModel.update(
         planId,
@@ -111,6 +127,16 @@ const studyPlanController = {
         return res.status(404).json({ message: 'Study plan not found' });
       }
 
+      // Verify ownership if not admin
+      if (
+        existingPlan.user_id !== req.user.userId &&
+        req.user.role !== 'admin'
+      ) {
+        return res
+          .status(403)
+          .json({ message: 'You can only delete your own study plans' });
+      }
+
       // Delete plan
       await studyPlanModel.delete(planId);
 
@@ -139,6 +165,15 @@ const studyPlanController = {
       const plan = await studyPlanModel.getById(planId);
       if (!plan) {
         return res.status(404).json({ message: 'Study plan not found' });
+      }
+
+      // Verify ownership if not admin
+      if (plan.user_id !== req.user.userId && req.user.role !== 'admin') {
+        return res
+          .status(403)
+          .json({
+            message: 'You can only add activities to your own study plans',
+          });
       }
 
       // Add activity
@@ -174,18 +209,38 @@ const studyPlanController = {
           .json({ message: 'Completion status is required' });
       }
 
-      // Update activity
-      const activity = await studyPlanModel.updateActivityStatus(
-        activityId,
-        isCompleted,
-      );
-      if (!activity) {
+      // Get the activity to check ownership
+      const { data: activity, error: activityError } = await supabase
+        .from('plan_activities')
+        .select('*, study_plans!inner(user_id)')
+        .eq('activity_id', activityId)
+        .single();
+
+      if (activityError || !activity) {
         return res.status(404).json({ message: 'Activity not found' });
       }
 
+      // Verify ownership if not admin
+      if (
+        activity.study_plans.user_id !== req.user.userId &&
+        req.user.role !== 'admin'
+      ) {
+        return res
+          .status(403)
+          .json({
+            message: 'You can only update activities in your own study plans',
+          });
+      }
+
+      // Update activity
+      const updatedActivity = await studyPlanModel.updateActivityStatus(
+        activityId,
+        isCompleted,
+      );
+
       res.json({
         message: 'Activity updated successfully',
-        activity,
+        activity: updatedActivity,
       });
     } catch (error) {
       console.error('Update activity error:', error);
@@ -198,6 +253,29 @@ const studyPlanController = {
     try {
       const activityId = req.params.activityId;
 
+      // Get the activity to check ownership
+      const { data: activity, error: activityError } = await supabase
+        .from('plan_activities')
+        .select('*, study_plans!inner(user_id)')
+        .eq('activity_id', activityId)
+        .single();
+
+      if (activityError || !activity) {
+        return res.status(404).json({ message: 'Activity not found' });
+      }
+
+      // Verify ownership if not admin
+      if (
+        activity.study_plans.user_id !== req.user.userId &&
+        req.user.role !== 'admin'
+      ) {
+        return res
+          .status(403)
+          .json({
+            message: 'You can only delete activities in your own study plans',
+          });
+      }
+
       const result = await studyPlanModel.deleteActivity(activityId);
       if (!result) {
         return res.status(404).json({ message: 'Activity not found' });
@@ -207,6 +285,59 @@ const studyPlanController = {
     } catch (error) {
       console.error('Delete activity error:', error);
       res.status(500).json({ message: 'Failed to delete activity' });
+    }
+  },
+
+  // Create a template study plan (admin only)
+  async createTemplate(req, res) {
+    try {
+      const userId = req.user.userId;
+      const { title, description, startDate, endDate } = req.body;
+
+      // Validate input
+      if (!title || !startDate || !endDate) {
+        return res
+          .status(400)
+          .json({ message: 'Title, start date, and end date are required' });
+      }
+
+      // Create template plan (is_custom = false)
+      const newTemplate = await studyPlanModel.create(
+        userId,
+        title,
+        description || null,
+        startDate,
+        endDate,
+        false,
+      );
+
+      res.status(201).json({
+        message: 'Study plan template created successfully',
+        template: newTemplate,
+      });
+    } catch (error) {
+      console.error('Template creation error:', error);
+      res.status(500).json({ message: 'Failed to create study plan template' });
+    }
+  },
+
+  // Get study plan templates
+  async getTemplates(req, res) {
+    try {
+      const { data, error } = await supabase
+        .from('study_plans')
+        .select('*')
+        .eq('is_custom', false)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      res.json(data);
+    } catch (error) {
+      console.error('Get templates error:', error);
+      res
+        .status(500)
+        .json({ message: 'Failed to retrieve study plan templates' });
     }
   },
 };

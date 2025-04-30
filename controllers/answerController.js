@@ -11,9 +11,6 @@ const answerController = {
       const { resultId, questionId, userAnswer, isCorrect } = req.body;
       const userId = req.user.userId;
 
-      // Initialize Supabase client for potential future use
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
       // Validate input
       if (
         !resultId ||
@@ -21,12 +18,10 @@ const answerController = {
         !userAnswer === undefined ||
         isCorrect === undefined
       ) {
-        return res
-          .status(400)
-          .json({
-            message:
-              'Result ID, question ID, user answer, and correctness status are required',
-          });
+        return res.status(400).json({
+          message:
+            'Result ID, question ID, user answer, and correctness status are required',
+        });
       }
 
       // Check if result exists
@@ -34,10 +29,14 @@ const answerController = {
       if (!result) {
         return res.status(404).json({ message: 'Test result not found' });
       }
-      
+
       // Verify the result belongs to the current user
       if (result.user_id !== userId) {
-        return res.status(403).json({ message: 'You do not have permission to add answers to this result' });
+        return res
+          .status(403)
+          .json({
+            message: 'You do not have permission to add answers to this result',
+          });
       }
 
       // Check if question exists
@@ -55,7 +54,13 @@ const answerController = {
       );
 
       // Log the activity
-      console.log(`User ${userId} (${req.user.email}) submitted answer for question ${questionId}: ${isCorrect ? 'correct' : 'incorrect'}`);
+      console.log(
+        `User ${userId} (${
+          req.user.email
+        }) submitted answer for question ${questionId}: ${
+          isCorrect ? 'correct' : 'incorrect'
+        }`,
+      );
 
       res.status(201).json({
         message: 'Answer recorded successfully',
@@ -73,9 +78,6 @@ const answerController = {
       const { answers } = req.body;
       const userId = req.user.userId;
 
-      // Initialize Supabase client for potential future use
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
       // Validate input
       if (!answers || !Array.isArray(answers) || answers.length === 0) {
         return res
@@ -86,13 +88,16 @@ const answerController = {
       // If all answers are for the same result, verify ownership
       if (answers.length > 0) {
         const firstResultId = answers[0].resultId;
-        const allSameResult = answers.every(a => a.resultId === firstResultId);
-        
+        const allSameResult = answers.every(
+          (a) => a.resultId === firstResultId,
+        );
+
         if (allSameResult) {
           const result = await resultModel.getById(firstResultId);
           if (result && result.user_id !== userId) {
-            return res.status(403).json({ 
-              message: 'You do not have permission to add answers to this result' 
+            return res.status(403).json({
+              message:
+                'You do not have permission to add answers to this result',
             });
           }
         } else {
@@ -100,8 +105,8 @@ const answerController = {
           for (const answer of answers) {
             const result = await resultModel.getById(answer.resultId);
             if (result && result.user_id !== userId) {
-              return res.status(403).json({ 
-                message: `You do not have permission to add answers to result ${answer.resultId}` 
+              return res.status(403).json({
+                message: `You do not have permission to add answers to result ${answer.resultId}`,
               });
             }
           }
@@ -112,8 +117,10 @@ const answerController = {
       const createdAnswers = await answerModel.createBatch(answers);
 
       // Log the activity
-      const correctCount = answers.filter(a => a.isCorrect).length;
-      console.log(`User ${userId} (${req.user.email}) submitted ${answers.length} answers, ${correctCount} correct`);
+      const correctCount = answers.filter((a) => a.isCorrect).length;
+      console.log(
+        `User ${userId} (${req.user.email}) submitted ${answers.length} answers, ${correctCount} correct`,
+      );
 
       res.status(201).json({
         message: 'Answers recorded successfully',
@@ -131,20 +138,20 @@ const answerController = {
       const resultId = req.params.resultId;
       const userId = req.user.userId;
 
-      // Initialize Supabase client for potential future use
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
       // Check if result exists
       const result = await resultModel.getById(resultId);
       if (!result) {
         return res.status(404).json({ message: 'Test result not found' });
       }
-      
+
       // Verify the user has permission to view these answers
       // Allow the user who owns the result or admins/instructors
-      if (result.user_id !== userId && !['admin', 'instructor'].includes(req.user.role)) {
-        return res.status(403).json({ 
-          message: 'You do not have permission to view these answers' 
+      if (
+        result.user_id !== userId &&
+        !['admin', 'instructor'].includes(req.user.role)
+      ) {
+        return res.status(403).json({
+          message: 'You do not have permission to view these answers',
         });
       }
 
@@ -152,7 +159,9 @@ const answerController = {
       const answers = await answerModel.getByResultId(resultId);
 
       // Log the activity
-      console.log(`User ${userId} (${req.user.email}) viewed answers for result ${resultId}`);
+      console.log(
+        `User ${userId} (${req.user.email}) viewed answers for result ${resultId}`,
+      );
 
       res.json(answers);
     } catch (error) {

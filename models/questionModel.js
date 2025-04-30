@@ -1,70 +1,121 @@
-const db = require('../config/db');
+const { createClient } = require('@supabase/supabase-js');
+const supabaseConfig = require('../config/supabase');
+
+// Initialize Supabase client
+const supabase = createClient(
+  supabaseConfig.supabaseUrl,
+  supabaseConfig.supabaseKey,
+);
 
 const questionModel = {
   // Create a new question
   async create(testId, questionText, options, correctAnswer) {
-    const query = `
-      INSERT INTO test_questions (test_id, question_text, options, correct_answer)
-      VALUES ($1, $2, $3, $4)
-      RETURNING question_id, test_id, question_text, options, correct_answer, created_at
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('test_questions')
+        .insert({
+          test_id: testId,
+          question_text: questionText,
+          options: options,
+          correct_answer: correctAnswer,
+        })
+        .select(
+          'question_id, test_id, question_text, options, correct_answer, created_at',
+        )
+        .single();
 
-    const values = [testId, questionText, options, correctAnswer];
-    const result = await db.query(query, values);
-
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating question:', error);
+      throw error;
+    }
   },
 
   // Get questions by test ID
   async getByTestId(testId) {
-    const query = `
-      SELECT question_id, test_id, question_text, options, correct_answer, created_at
-      FROM test_questions
-      WHERE test_id = $1
-      ORDER BY question_id
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('test_questions')
+        .select(
+          'question_id, test_id, question_text, options, correct_answer, created_at',
+        )
+        .eq('test_id', testId)
+        .order('question_id', { ascending: true });
 
-    const result = await db.query(query, [testId]);
-    return result.rows;
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error getting questions by test ID:', error);
+      throw error;
+    }
   },
 
   // Get question by ID
   async getById(questionId) {
-    const query = `
-      SELECT question_id, test_id, question_text, options, correct_answer, created_at
-      FROM test_questions
-      WHERE question_id = $1
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('test_questions')
+        .select(
+          'question_id, test_id, question_text, options, correct_answer, created_at',
+        )
+        .eq('question_id', questionId)
+        .single();
 
-    const result = await db.query(query, [questionId]);
-    return result.rows[0];
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return null; // No question found
+        }
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error getting question by ID:', error);
+      throw error;
+    }
   },
 
   // Update question
   async update(questionId, questionText, options, correctAnswer) {
-    const query = `
-      UPDATE test_questions
-      SET question_text = $2, options = $3, correct_answer = $4
-      WHERE question_id = $1
-      RETURNING question_id, test_id, question_text, options, correct_answer, created_at
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('test_questions')
+        .update({
+          question_text: questionText,
+          options: options,
+          correct_answer: correctAnswer,
+        })
+        .eq('question_id', questionId)
+        .select(
+          'question_id, test_id, question_text, options, correct_answer, created_at',
+        )
+        .single();
 
-    const values = [questionId, questionText, options, correctAnswer];
-    const result = await db.query(query, values);
-
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating question:', error);
+      throw error;
+    }
   },
 
   // Delete question
   async delete(questionId) {
-    const query = `
-      DELETE FROM test_questions
-      WHERE question_id = $1
-      RETURNING question_id
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('test_questions')
+        .delete()
+        .eq('question_id', questionId)
+        .select('question_id')
+        .single();
 
-    const result = await db.query(query, [questionId]);
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error deleting question:', error);
+      throw error;
+    }
   },
 };
 

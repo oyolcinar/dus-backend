@@ -1,70 +1,109 @@
-const db = require('../config/db');
+const db = require('../config/db'); // Keeping for backward compatibility
+// Import Supabase client
+const { createClient } = require('@supabase/supabase-js');
+const { supabaseUrl, supabaseKey } = require('../config/supabase');
+
+// Initialize Supabase client
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const studyPlanModel = {
   // Create a new study plan
   async create(userId, title, description, startDate, endDate, isCustom) {
-    const query = `
-      INSERT INTO study_plans (user_id, title, description, start_date, end_date, is_custom)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING plan_id, user_id, title, description, start_date, end_date, is_custom, created_at
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('study_plans')
+        .insert({
+          user_id: userId,
+          title,
+          description,
+          start_date: startDate,
+          end_date: endDate,
+          is_custom: isCustom,
+        })
+        .select('*')
+        .single();
 
-    const values = [userId, title, description, startDate, endDate, isCustom];
-    const result = await db.query(query, values);
-
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating study plan:', error);
+      throw error;
+    }
   },
 
   // Get user's study plans
   async getUserPlans(userId) {
-    const query = `
-      SELECT plan_id, user_id, title, description, start_date, end_date, is_custom, created_at
-      FROM study_plans
-      WHERE user_id = $1
-      ORDER BY start_date
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('study_plans')
+        .select('*')
+        .eq('user_id', userId)
+        .order('start_date');
 
-    const result = await db.query(query, [userId]);
-    return result.rows;
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error getting user plans:', error);
+      throw error;
+    }
   },
 
   // Get plan by ID
   async getById(planId) {
-    const query = `
-      SELECT plan_id, user_id, title, description, start_date, end_date, is_custom, created_at
-      FROM study_plans
-      WHERE plan_id = $1
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('study_plans')
+        .select('*')
+        .eq('plan_id', planId)
+        .single();
 
-    const result = await db.query(query, [planId]);
-    return result.rows[0];
+      if (error && error.code !== 'PGRST116') throw error; // PGRST116 is the "no rows returned" error
+      return data || null;
+    } catch (error) {
+      console.error('Error getting study plan by ID:', error);
+      throw error;
+    }
   },
 
   // Update plan
   async update(planId, title, description, startDate, endDate) {
-    const query = `
-      UPDATE study_plans
-      SET title = $2, description = $3, start_date = $4, end_date = $5
-      WHERE plan_id = $1
-      RETURNING plan_id, user_id, title, description, start_date, end_date, is_custom, created_at
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('study_plans')
+        .update({
+          title,
+          description,
+          start_date: startDate,
+          end_date: endDate,
+        })
+        .eq('plan_id', planId)
+        .select('*')
+        .single();
 
-    const values = [planId, title, description, startDate, endDate];
-    const result = await db.query(query, values);
-
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating study plan:', error);
+      throw error;
+    }
   },
 
   // Delete plan
   async delete(planId) {
-    const query = `
-      DELETE FROM study_plans
-      WHERE plan_id = $1
-      RETURNING plan_id
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('study_plans')
+        .delete()
+        .eq('plan_id', planId)
+        .select('plan_id')
+        .single();
 
-    const result = await db.query(query, [planId]);
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error deleting study plan:', error);
+      throw error;
+    }
   },
 
   // Add activity to plan
@@ -76,65 +115,101 @@ const studyPlanModel = {
     duration,
     scheduledDate,
   ) {
-    const query = `
-      INSERT INTO plan_activities (plan_id, subtopic_id, title, description, duration, scheduled_date)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING activity_id, plan_id, subtopic_id, title, description, duration, scheduled_date, is_completed, created_at
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('plan_activities')
+        .insert({
+          plan_id: planId,
+          subtopic_id: subtopicId,
+          title,
+          description,
+          duration,
+          scheduled_date: scheduledDate,
+        })
+        .select('*')
+        .single();
 
-    const values = [
-      planId,
-      subtopicId,
-      title,
-      description,
-      duration,
-      scheduledDate,
-    ];
-    const result = await db.query(query, values);
-
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error adding plan activity:', error);
+      throw error;
+    }
   },
 
   // Get plan activities
   async getPlanActivities(planId) {
-    const query = `
-      SELECT a.activity_id, a.plan_id, a.subtopic_id, a.title, a.description, 
-             a.duration, a.scheduled_date, a.is_completed, a.created_at,
-             s.title as subtopic_title, t.title as topic_title
-      FROM plan_activities a
-      LEFT JOIN subtopics s ON a.subtopic_id = s.subtopic_id
-      LEFT JOIN topics t ON s.topic_id = t.topic_id
-      WHERE a.plan_id = $1
-      ORDER BY a.scheduled_date, a.created_at
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('plan_activities')
+        .select(
+          `
+          *,
+          subtopics(title, topic_id, topics(title))
+        `,
+        )
+        .eq('plan_id', planId)
+        .order('scheduled_date')
+        .order('created_at');
 
-    const result = await db.query(query, [planId]);
-    return result.rows;
+      if (error) throw error;
+
+      // Transform the data to match the expected format
+      const formattedData = data.map((activity) => ({
+        activity_id: activity.activity_id,
+        plan_id: activity.plan_id,
+        subtopic_id: activity.subtopic_id,
+        title: activity.title,
+        description: activity.description,
+        duration: activity.duration,
+        scheduled_date: activity.scheduled_date,
+        is_completed: activity.is_completed,
+        created_at: activity.created_at,
+        subtopic_title: activity.subtopics?.title || null,
+        topic_title: activity.subtopics?.topics?.title || null,
+      }));
+
+      return formattedData;
+    } catch (error) {
+      console.error('Error getting plan activities:', error);
+      throw error;
+    }
   },
 
   // Update activity completion status
   async updateActivityStatus(activityId, isCompleted) {
-    const query = `
-      UPDATE plan_activities
-      SET is_completed = $2
-      WHERE activity_id = $1
-      RETURNING activity_id, plan_id, subtopic_id, title, description, duration, scheduled_date, is_completed, created_at
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('plan_activities')
+        .update({ is_completed: isCompleted })
+        .eq('activity_id', activityId)
+        .select('*')
+        .single();
 
-    const result = await db.query(query, [activityId, isCompleted]);
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating activity status:', error);
+      throw error;
+    }
   },
 
   // Delete activity
   async deleteActivity(activityId) {
-    const query = `
-      DELETE FROM plan_activities
-      WHERE activity_id = $1
-      RETURNING activity_id
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('plan_activities')
+        .delete()
+        .eq('activity_id', activityId)
+        .select('activity_id')
+        .single();
 
-    const result = await db.query(query, [activityId]);
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error deleting activity:', error);
+      throw error;
+    }
   },
 };
 

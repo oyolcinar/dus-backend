@@ -1,110 +1,198 @@
-const db = require('../config/db');
+const { createClient } = require('@supabase/supabase-js');
+const supabaseConfig = require('../config/supabase');
+
+// Initialize Supabase client
+const supabase = createClient(
+  supabaseConfig.supabaseUrl,
+  supabaseConfig.supabaseKey,
+);
 
 const achievementModel = {
   // Create a new achievement
   async create(name, description, requirements) {
-    const query = `
-      INSERT INTO achievements (name, description, requirements)
-      VALUES ($1, $2, $3)
-      RETURNING achievement_id, name, description, requirements, created_at
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('achievements')
+        .insert({
+          name,
+          description,
+          requirements,
+        })
+        .select('achievement_id, name, description, requirements, created_at')
+        .single();
 
-    const values = [name, description, requirements];
-    const result = await db.query(query, values);
-
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating achievement:', error);
+      throw error;
+    }
   },
 
   // Get all achievements
   async getAll() {
-    const query = `
-      SELECT achievement_id, name, description, requirements, created_at
-      FROM achievements
-      ORDER BY achievement_id
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('achievements')
+        .select('achievement_id, name, description, requirements, created_at')
+        .order('achievement_id', { ascending: true });
 
-    const result = await db.query(query);
-    return result.rows;
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error getting all achievements:', error);
+      throw error;
+    }
   },
 
   // Get achievement by ID
   async getById(achievementId) {
-    const query = `
-      SELECT achievement_id, name, description, requirements, created_at
-      FROM achievements
-      WHERE achievement_id = $1
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('achievements')
+        .select('achievement_id, name, description, requirements, created_at')
+        .eq('achievement_id', achievementId)
+        .single();
 
-    const result = await db.query(query, [achievementId]);
-    return result.rows[0];
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return null; // No achievement found
+        }
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error getting achievement by ID:', error);
+      throw error;
+    }
   },
 
   // Update achievement
   async update(achievementId, name, description, requirements) {
-    const query = `
-      UPDATE achievements
-      SET name = $2, description = $3, requirements = $4
-      WHERE achievement_id = $1
-      RETURNING achievement_id, name, description, requirements, created_at
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('achievements')
+        .update({
+          name,
+          description,
+          requirements,
+        })
+        .eq('achievement_id', achievementId)
+        .select('achievement_id, name, description, requirements, created_at')
+        .single();
 
-    const values = [achievementId, name, description, requirements];
-    const result = await db.query(query, values);
-
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating achievement:', error);
+      throw error;
+    }
   },
 
   // Delete achievement
   async delete(achievementId) {
-    const query = `
-      DELETE FROM achievements
-      WHERE achievement_id = $1
-      RETURNING achievement_id
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('achievements')
+        .delete()
+        .eq('achievement_id', achievementId)
+        .select('achievement_id')
+        .single();
 
-    const result = await db.query(query, [achievementId]);
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error deleting achievement:', error);
+      throw error;
+    }
   },
 
   // Award achievement to user
   async awardToUser(userId, achievementId) {
-    const query = `
-      INSERT INTO user_achievements (user_id, achievement_id)
-      VALUES ($1, $2)
-      ON CONFLICT (user_id, achievement_id) DO NOTHING
-      RETURNING user_id, achievement_id, date_earned
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('user_achievements')
+        .insert({
+          user_id: userId,
+          achievement_id: achievementId,
+        })
+        .select('user_id, achievement_id, date_earned')
+        .single();
 
-    const values = [userId, achievementId];
-    const result = await db.query(query, values);
+      // If there's a conflict (user already has achievement), handle it
+      if (error && error.code === '23505') {
+        // Retrieve the existing record instead
+        const { data: existingData, error: fetchError } = await supabase
+          .from('user_achievements')
+          .select('user_id, achievement_id, date_earned')
+          .eq('user_id', userId)
+          .eq('achievement_id', achievementId)
+          .single();
 
-    return result.rows[0];
+        if (fetchError) throw fetchError;
+        return existingData;
+      }
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error awarding achievement to user:', error);
+      throw error;
+    }
   },
 
   // Get user's achievements
   async getUserAchievements(userId) {
-    const query = `
-      SELECT a.achievement_id, a.name, a.description, a.requirements, ua.date_earned
-      FROM achievements a
-      JOIN user_achievements ua ON a.achievement_id = ua.achievement_id
-      WHERE ua.user_id = $1
-      ORDER BY ua.date_earned DESC
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('user_achievements')
+        .select(
+          `
+          achievement_id,
+          date_earned,
+          achievements (
+            achievement_id,
+            name, 
+            description,
+            requirements
+          )
+        `,
+        )
+        .eq('user_id', userId)
+        .order('date_earned', { ascending: false });
 
-    const result = await db.query(query, [userId]);
-    return result.rows;
+      if (error) throw error;
+
+      // Transform the nested data to match the format of the original response
+      return data.map((item) => ({
+        achievement_id: item.achievements.achievement_id,
+        name: item.achievements.name,
+        description: item.achievements.description,
+        requirements: item.achievements.requirements,
+        date_earned: item.date_earned,
+      }));
+    } catch (error) {
+      console.error('Error getting user achievements:', error);
+      throw error;
+    }
   },
 
   // Check if user has achievement
   async userHasAchievement(userId, achievementId) {
-    const query = `
-      SELECT 1
-      FROM user_achievements
-      WHERE user_id = $1 AND achievement_id = $2
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('user_achievements')
+        .select('user_id')
+        .eq('user_id', userId)
+        .eq('achievement_id', achievementId);
 
-    const result = await db.query(query, [userId, achievementId]);
-    return result.rows.length > 0;
+      if (error) throw error;
+      return data.length > 0;
+    } catch (error) {
+      console.error('Error checking if user has achievement:', error);
+      throw error;
+    }
   },
 };
 

@@ -9,7 +9,7 @@ const duelController = {
   async challenge(req, res) {
     try {
       const initiatorId = req.user.userId;
-      const {
+      let {
         opponentId,
         testId,
         questionCount,
@@ -25,8 +25,16 @@ const duelController = {
           .json({ message: 'Opponent ID and test ID are required' });
       }
 
+      // Ensure opponentId is a number for comparison
+      opponentId = Number(opponentId);
+
+      // Validate the conversion was successful
+      if (isNaN(opponentId)) {
+        return res.status(400).json({ message: 'Invalid opponent ID format' });
+      }
+
       // Prevent challenging yourself
-      if (initiatorId === parseInt(opponentId)) {
+      if (initiatorId === opponentId) {
         return res
           .status(400)
           .json({ message: 'You cannot challenge yourself to a duel' });
@@ -315,15 +323,24 @@ const duelController = {
 
       const stats = await userModel.getDuelStats(userId);
 
-      res.json({
+      // Handle potential missing data with default values
+      const responseStats = {
         userId,
-        totalDuels: parseInt(stats.total_duels) || 0,
-        wins: parseInt(stats.duels_won) || 0,
-        losses: parseInt(stats.duels_lost) || 0,
-        longestLosingStreak: parseInt(stats.longest_losing_streak) || 0,
-        currentLosingStreak: parseInt(stats.current_losing_streak) || 0,
-        winRate: parseFloat(stats.win_rate).toFixed(2) || 0,
-      });
+        totalDuels: stats?.total_duels ? parseInt(stats.total_duels) : 0,
+        wins: stats?.duels_won ? parseInt(stats.duels_won) : 0,
+        losses: stats?.duels_lost ? parseInt(stats.duels_lost) : 0,
+        longestLosingStreak: stats?.longest_losing_streak
+          ? parseInt(stats.longest_losing_streak)
+          : 0,
+        currentLosingStreak: stats?.current_losing_streak
+          ? parseInt(stats.current_losing_streak)
+          : 0,
+        winRate: stats?.win_rate
+          ? parseFloat(stats.win_rate).toFixed(2)
+          : '0.00',
+      };
+
+      res.json(responseStats);
     } catch (error) {
       console.error('Get user stats error:', error);
       res.status(500).json({ message: 'Failed to retrieve user statistics' });

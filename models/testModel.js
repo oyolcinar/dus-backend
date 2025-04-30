@@ -1,69 +1,104 @@
-const db = require('../config/db');
+const db = require('../config/db'); // Keeping for backward compatibility
+// Import Supabase client
+const { createClient } = require('@supabase/supabase-js');
+const { supabaseUrl, supabaseKey } = require('../config/supabase');
+
+// Initialize Supabase client
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const testModel = {
   // Create a new test
   async create(title, description, difficultyLevel) {
-    const query = `
-      INSERT INTO tests (title, description, difficulty_level)
-      VALUES ($1, $2, $3)
-      RETURNING test_id, title, description, difficulty_level, created_at
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('tests')
+        .insert({
+          title,
+          description,
+          difficulty_level: difficultyLevel,
+        })
+        .select('*')
+        .single();
 
-    const values = [title, description, difficultyLevel];
-    const result = await db.query(query, values);
-
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating test:', error);
+      throw error;
+    }
   },
 
   // Get all tests
   async getAll() {
-    const query = `
-      SELECT test_id, title, description, difficulty_level, created_at
-      FROM tests
-      ORDER BY created_at DESC
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('tests')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    const result = await db.query(query);
-    return result.rows;
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error getting all tests:', error);
+      throw error;
+    }
   },
 
   // Get test by ID
   async getById(testId) {
-    const query = `
-      SELECT test_id, title, description, difficulty_level, created_at
-      FROM tests
-      WHERE test_id = $1
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('tests')
+        .select('*')
+        .eq('test_id', testId)
+        .single();
 
-    const result = await db.query(query, [testId]);
-    return result.rows[0];
+      if (error && error.code !== 'PGRST116') throw error; // PGRST116 is the "no rows returned" error
+      return data || null;
+    } catch (error) {
+      console.error('Error getting test by ID:', error);
+      throw error;
+    }
   },
 
   // Update test
   async update(testId, title, description, difficultyLevel) {
-    const query = `
-      UPDATE tests
-      SET title = $2, description = $3, difficulty_level = $4
-      WHERE test_id = $1
-      RETURNING test_id, title, description, difficulty_level, created_at
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('tests')
+        .update({
+          title,
+          description,
+          difficulty_level: difficultyLevel,
+        })
+        .eq('test_id', testId)
+        .select('*')
+        .single();
 
-    const values = [testId, title, description, difficultyLevel];
-    const result = await db.query(query, values);
-
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating test:', error);
+      throw error;
+    }
   },
 
   // Delete test
   async delete(testId) {
-    const query = `
-      DELETE FROM tests
-      WHERE test_id = $1
-      RETURNING test_id
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('tests')
+        .delete()
+        .eq('test_id', testId)
+        .select('test_id')
+        .single();
 
-    const result = await db.query(query, [testId]);
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error deleting test:', error);
+      throw error;
+    }
   },
 };
 

@@ -14,12 +14,9 @@ const duelResultController = {
         initiatorScore === undefined ||
         opponentScore === undefined
       ) {
-        return res
-          .status(400)
-          .json({
-            message:
-              'Duel ID, initiator score, and opponent score are required',
-          });
+        return res.status(400).json({
+          message: 'Duel ID, initiator score, and opponent score are required',
+        });
       }
 
       // Check if duel exists
@@ -124,20 +121,30 @@ const duelResultController = {
       // Get statistics
       const stats = await duelResultModel.getUserStats(userId);
 
+      // Safely parse values with defaults in case of null/undefined
+      const wins = stats && stats.wins ? parseInt(stats.wins) : 0;
+      const losses = stats && stats.losses ? parseInt(stats.losses) : 0;
+      const totalDuels = wins + losses;
+
+      // Calculate win rate safely to avoid division by zero
+      let winRate = 0;
+      if (totalDuels > 0) {
+        winRate = ((wins / totalDuels) * 100).toFixed(2);
+      }
+
+      // Safely parse average score
+      const averageScore =
+        stats && stats.avg_score
+          ? parseFloat(stats.avg_score).toFixed(2)
+          : '0.00';
+
       res.json({
         userId,
-        wins: parseInt(stats.wins) || 0,
-        losses: parseInt(stats.losses) || 0,
-        totalDuels: parseInt(stats.wins) + parseInt(stats.losses) || 0,
-        winRate:
-          stats.wins > 0
-            ? (
-                (parseInt(stats.wins) /
-                  (parseInt(stats.wins) + parseInt(stats.losses))) *
-                100
-              ).toFixed(2)
-            : 0,
-        averageScore: parseFloat(stats.avg_score).toFixed(2) || 0,
+        wins,
+        losses,
+        totalDuels,
+        winRate,
+        averageScore,
       });
     } catch (error) {
       console.error('Get user stats error:', error);

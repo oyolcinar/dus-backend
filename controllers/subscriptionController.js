@@ -1,4 +1,10 @@
 const subscriptionModel = require('../models/subscriptionModel');
+// Import Supabase client for any direct operations
+const { createClient } = require('@supabase/supabase-js');
+const { supabaseUrl, supabaseKey } = require('../config/supabase');
+
+// Initialize Supabase client
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const subscriptionController = {
   // Create a new subscription
@@ -10,11 +16,9 @@ const subscriptionController = {
 
       // Validate input
       if (!subscriptionType || !startDate || !endDate) {
-        return res
-          .status(400)
-          .json({
-            message: 'Subscription type, start date, and end date are required',
-          });
+        return res.status(400).json({
+          message: 'Subscription type, start date, and end date are required',
+        });
       }
 
       // Create subscription
@@ -82,6 +86,27 @@ const subscriptionController = {
   async cancelSubscription(req, res) {
     try {
       const subscriptionId = req.params.id;
+
+      // First check if subscription exists and user owns it
+      const { data: subscriptionCheck, error: checkError } = await supabase
+        .from('subscriptions')
+        .select('user_id')
+        .eq('subscription_id', subscriptionId)
+        .single();
+
+      if (checkError || !subscriptionCheck) {
+        return res.status(404).json({ message: 'Subscription not found' });
+      }
+
+      // Check if user owns this subscription or is admin
+      if (
+        subscriptionCheck.user_id !== req.user.userId &&
+        req.user.role !== 'admin'
+      ) {
+        return res
+          .status(403)
+          .json({ message: 'You can only cancel your own subscriptions' });
+      }
 
       const subscription = await subscriptionModel.cancelSubscription(
         subscriptionId,

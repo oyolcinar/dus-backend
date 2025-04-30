@@ -1,83 +1,122 @@
-const db = require('../config/db');
+const { createClient } = require('@supabase/supabase-js');
+const { supabaseUrl, supabaseKey } = require('../config/supabase');
+
+// Initialize Supabase client
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Coaching Notes Model
 const coachingNoteModel = {
   // Create a new coaching note
   async create(title, content, publishDate, weekNumber, year) {
-    const query = `
-      INSERT INTO coaching_notes (title, content, publish_date, week_number, year)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING note_id, title, content, publish_date, week_number, year, created_at
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('coaching_notes')
+        .insert({
+          title,
+          content,
+          publish_date: publishDate,
+          week_number: weekNumber,
+          year,
+        })
+        .select()
+        .single();
 
-    const values = [title, content, publishDate, weekNumber, year];
-    const result = await db.query(query, values);
-
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating coaching note:', error);
+      throw error;
+    }
   },
 
   // Get all coaching notes
   async getAll() {
-    const query = `
-      SELECT note_id, title, content, publish_date, week_number, year, created_at
-      FROM coaching_notes
-      ORDER BY publish_date DESC
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('coaching_notes')
+        .select('*')
+        .order('publish_date', { ascending: false });
 
-    const result = await db.query(query);
-    return result.rows;
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error retrieving coaching notes:', error);
+      throw error;
+    }
   },
 
   // Get latest coaching note
   async getLatest() {
-    const query = `
-      SELECT note_id, title, content, publish_date, week_number, year, created_at
-      FROM coaching_notes
-      ORDER BY publish_date DESC
-      LIMIT 1
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('coaching_notes')
+        .select('*')
+        .order('publish_date', { ascending: false })
+        .limit(1)
+        .single();
 
-    const result = await db.query(query);
-    return result.rows[0];
+      if (error && error.code !== 'PGRST116') throw error; // PGRST116 means no rows returned
+
+      return data || null;
+    } catch (error) {
+      console.error('Error retrieving latest coaching note:', error);
+      throw error;
+    }
   },
 
   // Get note by ID
   async getById(noteId) {
-    const query = `
-      SELECT note_id, title, content, publish_date, week_number, year, created_at
-      FROM coaching_notes
-      WHERE note_id = $1
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('coaching_notes')
+        .select('*')
+        .eq('note_id', noteId)
+        .single();
 
-    const result = await db.query(query, [noteId]);
-    return result.rows[0];
+      if (error && error.code !== 'PGRST116') throw error;
+
+      return data || null;
+    } catch (error) {
+      console.error(`Error retrieving coaching note ID ${noteId}:`, error);
+      throw error;
+    }
   },
 
   // Update note
-  async update(noteId, title, content, publishDate, weekNumber, year) {
-    const query = `
-      UPDATE coaching_notes
-      SET title = $2, content = $3, publish_date = $4, week_number = $5, year = $6
-      WHERE note_id = $1
-      RETURNING note_id, title, content, publish_date, week_number, year, created_at
-    `;
+  async update(noteId, updates) {
+    try {
+      const { data, error } = await supabase
+        .from('coaching_notes')
+        .update(updates)
+        .eq('note_id', noteId)
+        .select()
+        .single();
 
-    const values = [noteId, title, content, publishDate, weekNumber, year];
-    const result = await db.query(query, values);
-
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error(`Error updating coaching note ID ${noteId}:`, error);
+      throw error;
+    }
   },
 
   // Delete note
   async delete(noteId) {
-    const query = `
-      DELETE FROM coaching_notes
-      WHERE note_id = $1
-      RETURNING note_id
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('coaching_notes')
+        .delete()
+        .eq('note_id', noteId)
+        .select()
+        .single();
 
-    const result = await db.query(query, [noteId]);
-    return result.rows[0];
+      if (error && error.code !== 'PGRST116') throw error;
+
+      return data || { note_id: noteId };
+    } catch (error) {
+      console.error(`Error deleting coaching note ID ${noteId}:`, error);
+      throw error;
+    }
   },
 };
 
@@ -85,67 +124,104 @@ const coachingNoteModel = {
 const motivationalMessageModel = {
   // Create a new motivational message
   async create(title, audioUrl, description, publishDate) {
-    const query = `
-      INSERT INTO motivational_messages (title, audio_url, description, publish_date)
-      VALUES ($1, $2, $3, $4)
-      RETURNING message_id, title, audio_url, description, publish_date, created_at
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('motivational_messages')
+        .insert({
+          title,
+          audio_url: audioUrl,
+          description,
+          publish_date: publishDate,
+        })
+        .select()
+        .single();
 
-    const values = [title, audioUrl, description, publishDate];
-    const result = await db.query(query, values);
-
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating motivational message:', error);
+      throw error;
+    }
   },
 
   // Get all motivational messages
   async getAll() {
-    const query = `
-      SELECT message_id, title, audio_url, description, publish_date, created_at
-      FROM motivational_messages
-      ORDER BY publish_date DESC
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('motivational_messages')
+        .select('*')
+        .order('publish_date', { ascending: false });
 
-    const result = await db.query(query);
-    return result.rows;
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error retrieving motivational messages:', error);
+      throw error;
+    }
   },
 
   // Get message by ID
   async getById(messageId) {
-    const query = `
-      SELECT message_id, title, audio_url, description, publish_date, created_at
-      FROM motivational_messages
-      WHERE message_id = $1
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('motivational_messages')
+        .select('*')
+        .eq('message_id', messageId)
+        .single();
 
-    const result = await db.query(query, [messageId]);
-    return result.rows[0];
+      if (error && error.code !== 'PGRST116') throw error;
+
+      return data || null;
+    } catch (error) {
+      console.error(
+        `Error retrieving motivational message ID ${messageId}:`,
+        error,
+      );
+      throw error;
+    }
   },
 
   // Update message
-  async update(messageId, title, audioUrl, description, publishDate) {
-    const query = `
-      UPDATE motivational_messages
-      SET title = $2, audio_url = $3, description = $4, publish_date = $5
-      WHERE message_id = $1
-      RETURNING message_id, title, audio_url, description, publish_date, created_at
-    `;
+  async update(messageId, updates) {
+    try {
+      const { data, error } = await supabase
+        .from('motivational_messages')
+        .update(updates)
+        .eq('message_id', messageId)
+        .select()
+        .single();
 
-    const values = [messageId, title, audioUrl, description, publishDate];
-    const result = await db.query(query, values);
-
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error(
+        `Error updating motivational message ID ${messageId}:`,
+        error,
+      );
+      throw error;
+    }
   },
 
   // Delete message
   async delete(messageId) {
-    const query = `
-      DELETE FROM motivational_messages
-      WHERE message_id = $1
-      RETURNING message_id
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('motivational_messages')
+        .delete()
+        .eq('message_id', messageId)
+        .select()
+        .single();
 
-    const result = await db.query(query, [messageId]);
-    return result.rows[0];
+      if (error && error.code !== 'PGRST116') throw error;
+
+      return data || { message_id: messageId };
+    } catch (error) {
+      console.error(
+        `Error deleting motivational message ID ${messageId}:`,
+        error,
+      );
+      throw error;
+    }
   },
 };
 
@@ -153,80 +229,101 @@ const motivationalMessageModel = {
 const strategyVideoModel = {
   // Create a new strategy video
   async create(title, externalUrl, description, isPremium) {
-    const query = `
-      INSERT INTO strategy_videos (title, external_url, description, is_premium)
-      VALUES ($1, $2, $3, $4)
-      RETURNING video_id, title, external_url, description, is_premium, created_at
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('strategy_videos')
+        .insert({
+          title,
+          external_url: externalUrl,
+          description,
+          is_premium: isPremium,
+        })
+        .select()
+        .single();
 
-    const values = [title, externalUrl, description, isPremium];
-    const result = await db.query(query, values);
-
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating strategy video:', error);
+      throw error;
+    }
   },
 
   // Get all strategy videos
   async getAll(isPremium = null) {
-    let query;
-    let params = [];
+    try {
+      let query = supabase
+        .from('strategy_videos')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    if (isPremium !== null) {
-      query = `
-        SELECT video_id, title, external_url, description, is_premium, created_at
-        FROM strategy_videos
-        WHERE is_premium = $1
-        ORDER BY created_at DESC
-      `;
-      params = [isPremium];
-    } else {
-      query = `
-        SELECT video_id, title, external_url, description, is_premium, created_at
-        FROM strategy_videos
-        ORDER BY created_at DESC
-      `;
+      if (isPremium !== null) {
+        query = query.eq('is_premium', isPremium);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error retrieving strategy videos:', error);
+      throw error;
     }
-
-    const result = await db.query(query, params);
-    return result.rows;
   },
 
   // Get video by ID
   async getById(videoId) {
-    const query = `
-      SELECT video_id, title, external_url, description, is_premium, created_at
-      FROM strategy_videos
-      WHERE video_id = $1
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('strategy_videos')
+        .select('*')
+        .eq('video_id', videoId)
+        .single();
 
-    const result = await db.query(query, [videoId]);
-    return result.rows[0];
+      if (error && error.code !== 'PGRST116') throw error;
+
+      return data || null;
+    } catch (error) {
+      console.error(`Error retrieving strategy video ID ${videoId}:`, error);
+      throw error;
+    }
   },
 
   // Update video
-  async update(videoId, title, externalUrl, description, isPremium) {
-    const query = `
-      UPDATE strategy_videos
-      SET title = $2, external_url = $3, description = $4, is_premium = $5
-      WHERE video_id = $1
-      RETURNING video_id, title, external_url, description, is_premium, created_at
-    `;
+  async update(videoId, updates) {
+    try {
+      const { data, error } = await supabase
+        .from('strategy_videos')
+        .update(updates)
+        .eq('video_id', videoId)
+        .select()
+        .single();
 
-    const values = [videoId, title, externalUrl, description, isPremium];
-    const result = await db.query(query, values);
-
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error(`Error updating strategy video ID ${videoId}:`, error);
+      throw error;
+    }
   },
 
   // Delete video
   async delete(videoId) {
-    const query = `
-      DELETE FROM strategy_videos
-      WHERE video_id = $1
-      RETURNING video_id
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('strategy_videos')
+        .delete()
+        .eq('video_id', videoId)
+        .select()
+        .single();
 
-    const result = await db.query(query, [videoId]);
-    return result.rows[0];
+      if (error && error.code !== 'PGRST116') throw error;
+
+      return data || { video_id: videoId };
+    } catch (error) {
+      console.error(`Error deleting strategy video ID ${videoId}:`, error);
+      throw error;
+    }
   },
 };
 

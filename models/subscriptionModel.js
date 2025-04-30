@@ -1,4 +1,10 @@
-const db = require('../config/db');
+const db = require('../config/db'); // Keeping for backward compatibility
+// Import Supabase client
+const { createClient } = require('@supabase/supabase-js');
+const { supabaseUrl, supabaseKey } = require('../config/supabase');
+
+// Initialize Supabase client
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const subscriptionModel = {
   // Create a new subscription
@@ -10,91 +16,120 @@ const subscriptionModel = {
     paymentReference,
     amount,
   ) {
-    const query = `
-      INSERT INTO subscriptions (user_id, subscription_type, start_date, end_date, payment_reference, amount, is_active)
-      VALUES ($1, $2, $3, $4, $5, $6, true)
-      RETURNING subscription_id, user_id, subscription_type, start_date, end_date, payment_reference, amount, is_active, created_at
-    `;
+    try {
+      // Insert new subscription
+      const { data, error } = await supabase
+        .from('subscriptions')
+        .insert({
+          user_id: userId,
+          subscription_type: subscriptionType,
+          start_date: startDate,
+          end_date: endDate,
+          payment_reference: paymentReference,
+          amount: amount,
+          is_active: true,
+        })
+        .select('*')
+        .single();
 
-    const values = [
-      userId,
-      subscriptionType,
-      startDate,
-      endDate,
-      paymentReference,
-      amount,
-    ];
-    const result = await db.query(query, values);
+      if (error) throw error;
 
-    // Update user's subscription type
-    await db.query(
-      `
-      UPDATE users
-      SET subscription_type = $1
-      WHERE user_id = $2
-    `,
-      [subscriptionType, userId],
-    );
+      // Update user's subscription type
+      const { error: userUpdateError } = await supabase
+        .from('users')
+        .update({ subscription_type: subscriptionType })
+        .eq('user_id', userId);
 
-    return result.rows[0];
+      if (userUpdateError) throw userUpdateError;
+
+      return data;
+    } catch (error) {
+      console.error('Error creating subscription:', error);
+      throw error;
+    }
   },
 
   // Get user's active subscription
   async getActiveSubscription(userId) {
-    const query = `
-      SELECT subscription_id, user_id, subscription_type, start_date, end_date, payment_reference, amount, is_active, created_at
-      FROM subscriptions
-      WHERE user_id = $1 AND is_active = true AND end_date >= CURRENT_DATE
-      ORDER BY end_date DESC
-      LIMIT 1
-    `;
+    try {
+      const currentDate = new Date().toISOString().split('T')[0]; // Get current date in YYYY-MM-DD format
 
-    const result = await db.query(query, [userId]);
-    return result.rows[0];
+      const { data, error } = await supabase
+        .from('subscriptions')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .gte('end_date', currentDate)
+        .order('end_date', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+      return data.length > 0 ? data[0] : null;
+    } catch (error) {
+      console.error('Error getting active subscription:', error);
+      throw error;
+    }
   },
 
   // Get user's subscription history
   async getUserSubscriptions(userId) {
-    const query = `
-      SELECT subscription_id, user_id, subscription_type, start_date, end_date, payment_reference, amount, is_active, created_at
-      FROM subscriptions
-      WHERE user_id = $1
-      ORDER BY created_at DESC
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('subscriptions')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
 
-    const result = await db.query(query, [userId]);
-    return result.rows;
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error getting user subscriptions:', error);
+      throw error;
+    }
   },
 
   // Cancel subscription
   async cancelSubscription(subscriptionId) {
-    const query = `
-      UPDATE subscriptions
-      SET is_active = false
-      WHERE subscription_id = $1
-      RETURNING subscription_id, user_id, subscription_type, start_date, end_date, payment_reference, amount, is_active, created_at
-    `;
+    try {
+      // First get the subscription to get the user_id
+      const { data: subscription, error: getError } = await supabase
+        .from('subscriptions')
+        .select('user_id')
+        .eq('subscription_id', subscriptionId)
+        .single();
 
-    const result = await db.query(query, [subscriptionId]);
+      if (getError) throw getError;
+      if (!subscription) return null;
 
-    // If no more active subscriptions, revert user to free
-    if (result.rows[0]) {
-      const { user_id } = result.rows[0];
-      const activeSubscriptions = await this.getActiveSubscription(user_id);
+      // Update subscription to inactive
+      const { data, error } = await supabase
+        .from('subscriptions')
+        .update({ is_active: false })
+        .eq('subscription_id', subscriptionId)
+        .select('*')
+        .single();
 
-      if (!activeSubscriptions) {
-        await db.query(
-          `
-          UPDATE users
-          SET subscription_type = 'free'
-          WHERE user_id = $1
-        `,
-          [user_id],
-        );
+      if (error) throw error;
+
+      // Check if user has any other active subscriptions
+      const userId = subscription.user_id;
+      const activeSubscription = await this.getActiveSubscription(userId);
+
+      // If no more active subscriptions, revert user to free
+      if (!activeSubscription) {
+        const { error: userUpdateError } = await supabase
+          .from('users')
+          .update({ subscription_type: 'free' })
+          .eq('user_id', userId);
+
+        if (userUpdateError) throw userUpdateError;
       }
-    }
 
-    return result.rows[0];
+      return data;
+    } catch (error) {
+      console.error('Error cancelling subscription:', error);
+      throw error;
+    }
   },
 };
 

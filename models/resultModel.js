@@ -1,59 +1,154 @@
-const db = require('../config/db');
+const { createClient } = require('@supabase/supabase-js');
+const supabaseConfig = require('../config/supabase');
+
+// Initialize Supabase client
+const supabase = createClient(
+  supabaseConfig.supabaseUrl,
+  supabaseConfig.supabaseKey,
+);
 
 const resultModel = {
   // Create a new test result
   async create(userId, testId, score, timeTaken) {
-    const query = `
-      INSERT INTO user_test_results (user_id, test_id, score, time_taken)
-      VALUES ($1, $2, $3, $4)
-      RETURNING result_id, user_id, test_id, score, time_taken, date_taken
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('user_test_results')
+        .insert({
+          user_id: userId,
+          test_id: testId,
+          score: score,
+          time_taken: timeTaken,
+        })
+        .select('result_id, user_id, test_id, score, time_taken, date_taken')
+        .single();
 
-    const values = [userId, testId, score, timeTaken];
-    const result = await db.query(query, values);
-
-    return result.rows[0];
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating test result:', error);
+      throw error;
+    }
   },
 
   // Get results by user ID
   async getByUserId(userId) {
-    const query = `
-      SELECT r.result_id, r.user_id, r.test_id, r.score, r.time_taken, r.date_taken,
-             t.title as test_title, t.difficulty_level
-      FROM user_test_results r
-      JOIN tests t ON r.test_id = t.test_id
-      WHERE r.user_id = $1
-      ORDER BY r.date_taken DESC
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('user_test_results')
+        .select(
+          `
+          result_id,
+          user_id,
+          test_id,
+          score,
+          time_taken,
+          date_taken,
+          tests (
+            title,
+            difficulty_level
+          )
+        `,
+        )
+        .eq('user_id', userId)
+        .order('date_taken', { ascending: false });
 
-    const result = await db.query(query, [userId]);
-    return result.rows;
+      if (error) throw error;
+
+      // Transform the nested data to match the format of the original model
+      return data.map((result) => ({
+        result_id: result.result_id,
+        user_id: result.user_id,
+        test_id: result.test_id,
+        score: result.score,
+        time_taken: result.time_taken,
+        date_taken: result.date_taken,
+        test_title: result.tests?.title,
+        difficulty_level: result.tests?.difficulty_level,
+      }));
+    } catch (error) {
+      console.error('Error getting results by user ID:', error);
+      throw error;
+    }
   },
 
   // Get result by ID
   async getById(resultId) {
-    const query = `
-      SELECT r.result_id, r.user_id, r.test_id, r.score, r.time_taken, r.date_taken,
-             t.title as test_title, t.difficulty_level
-      FROM user_test_results r
-      JOIN tests t ON r.test_id = t.test_id
-      WHERE r.result_id = $1
-    `;
+    try {
+      const { data, error } = await supabase
+        .from('user_test_results')
+        .select(
+          `
+          result_id,
+          user_id,
+          test_id,
+          score,
+          time_taken,
+          date_taken,
+          tests (
+            title,
+            difficulty_level
+          )
+        `,
+        )
+        .eq('result_id', resultId)
+        .single();
 
-    const result = await db.query(query, [resultId]);
-    return result.rows[0];
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return null; // No result found
+        }
+        throw error;
+      }
+
+      // Transform to match the original model format
+      return data
+        ? {
+            result_id: data.result_id,
+            user_id: data.user_id,
+            test_id: data.test_id,
+            score: data.score,
+            time_taken: data.time_taken,
+            date_taken: data.date_taken,
+            test_title: data.tests?.title,
+            difficulty_level: data.tests?.difficulty_level,
+          }
+        : null;
+    } catch (error) {
+      console.error('Error getting result by ID:', error);
+      throw error;
+    }
   },
 
   // Get average score for a test
   async getAverageScoreByTest(testId) {
-    const query = `
-      SELECT AVG(score) as average_score, COUNT(*) as attempt_count
-      FROM user_test_results
-      WHERE test_id = $1
-    `;
+    try {
+      // Supabase doesn't directly support aggregation in the client API
+      // We need to use a raw SQL query or calculate this on the client side
 
-    const result = await db.query(query, [testId]);
-    return result.rows[0];
+      // First, get all results for the test
+      const { data, error } = await supabase
+        .from('user_test_results')
+        .select('score')
+        .eq('test_id', testId);
+
+      if (error) throw error;
+
+      // Calculate average and count on the client side
+      const attemptCount = data.length;
+      const totalScore = data.reduce(
+        (sum, item) => sum + Number(item.score),
+        0,
+      );
+      const averageScore = attemptCount > 0 ? totalScore / attemptCount : 0;
+
+      return {
+        average_score: averageScore,
+        attempt_count: attemptCount,
+      };
+    } catch (error) {
+      console.error('Error getting average score by test ID:', error);
+      throw error;
+    }
   },
 };
 

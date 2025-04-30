@@ -22,10 +22,33 @@ const resultController = {
           .json({ message: 'Test ID, score, and answers are required' });
       }
 
+      // Validate score is a number between 0 and 100
+      if (isNaN(score) || score < 0 || score > 100) {
+        return res
+          .status(400)
+          .json({ message: 'Score must be a number between 0 and 100' });
+      }
+
       // Check if test exists
       const test = await testModel.getById(testId);
       if (!test) {
         return res.status(404).json({ message: 'Test not found' });
+      }
+
+      // Check each answer has required fields
+      for (const answer of answers) {
+        if (
+          !answer.questionId ||
+          answer.userAnswer === undefined ||
+          answer.isCorrect === undefined
+        ) {
+          return res
+            .status(400)
+            .json({
+              message:
+                'Each answer must have questionId, userAnswer, and isCorrect fields',
+            });
+        }
       }
 
       // Create test result
@@ -46,6 +69,14 @@ const resultController = {
 
       await answerModel.createBatch(formattedAnswers);
 
+      // Update user statistics if needed
+      try {
+        await userModel.updateTestStats(userId, score);
+      } catch (statsError) {
+        console.warn('Failed to update user test statistics:', statsError);
+        // Continue with the response even if stats update fails
+      }
+
       res.status(201).json({
         message: 'Test result submitted successfully',
         result: newResult,
@@ -59,9 +90,13 @@ const resultController = {
   // Get user's test results
   async getUserResults(req, res) {
     try {
-      const userId = req.user.userId;
+      // Allow getting results for a specific user if admin
+      const targetUserId =
+        req.query.userId && req.user.role === 'admin'
+          ? req.query.userId
+          : req.user.userId;
 
-      const results = await resultModel.getByUserId(userId);
+      const results = await resultModel.getByUserId(targetUserId);
       res.json(results);
     } catch (error) {
       console.error('Get results error:', error);
@@ -81,8 +116,8 @@ const resultController = {
         return res.status(404).json({ message: 'Result not found' });
       }
 
-      // Verify that the result belongs to the user
-      if (result.user_id !== userId) {
+      // Verify that the result belongs to the user or user is admin
+      if (result.user_id !== userId && req.user.role !== 'admin') {
         return res
           .status(403)
           .json({ message: 'Unauthorized access to this result' });
@@ -115,15 +150,63 @@ const resultController = {
       // Get statistics
       const stats = await resultModel.getAverageScoreByTest(testId);
 
+      // Format numbers with proper precision
+      const averageScore =
+        parseFloat(parseFloat(stats.average_score).toFixed(2)) || 0;
+      const attemptCount = parseInt(stats.attempt_count) || 0;
+
+      // Get top performers if admin
+      let topPerformers = [];
+      if (req.user && req.user.role === 'admin') {
+        // This would require implementing a new function in the resultModel
+        // topPerformers = await resultModel.getTopPerformersByTest(testId, 5);
+      }
+
       res.json({
         testId,
         testTitle: test.title,
-        averageScore: parseFloat(stats.average_score) || 0,
-        attemptCount: parseInt(stats.attempt_count) || 0,
+        averageScore,
+        attemptCount,
+        ...(topPerformers.length > 0 && { topPerformers }),
       });
     } catch (error) {
       console.error('Get test stats error:', error);
       res.status(500).json({ message: 'Failed to retrieve test statistics' });
+    }
+  },
+
+  // Get user's performance trends (for student dashboard)
+  async getUserPerformanceTrends(req, res) {
+    try {
+      const userId = req.user.userId;
+
+      // This would require implementing a new function in the resultModel
+      // const trends = await resultModel.getUserPerformanceTrends(userId);
+
+      // For now, we'll just return the user's results
+      const results = await resultModel.getByUserId(userId);
+
+      // Calculate average score
+      const totalScore = results.reduce(
+        (sum, result) => sum + Number(result.score),
+        0,
+      );
+      const averageScore =
+        results.length > 0
+          ? parseFloat((totalScore / results.length).toFixed(2))
+          : 0;
+
+      res.json({
+        userId,
+        testCount: results.length,
+        averageScore,
+        results: results.slice(0, 5), // Return only the 5 most recent tests
+      });
+    } catch (error) {
+      console.error('Get user performance trends error:', error);
+      res
+        .status(500)
+        .json({ message: 'Failed to retrieve performance trends' });
     }
   },
 };
