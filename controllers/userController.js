@@ -1,10 +1,11 @@
 const userModel = require('../models/userModel');
 const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-require('dotenv').config();
+const { createClient } = require('@supabase/supabase-js');
+const { supabaseUrl, supabaseKey } = require('../config/supabase');
 
 const userController = {
-  // Register a new user
+  // Register a new user - this is now handled by authController in authRoutes.js
+  // but keeping this for backwards compatibility if needed
   async register(req, res) {
     try {
       const { username, email, password } = req.body;
@@ -22,15 +23,28 @@ const userController = {
           .json({ message: 'User with this email already exists' });
       }
 
-      // Create new user
-      const newUser = await userModel.create(username, email, password);
+      // Initialize Supabase client with admin privileges
+      const supabase = createClient(supabaseUrl, supabaseKey);
 
-      // Generate JWT
-      const token = jwt.sign(
-        { userId: newUser.user_id, email: newUser.email },
-        process.env.JWT_SECRET,
-        { expiresIn: '7d' },
-      );
+      // Create user in Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true
+      });
+
+      if (authError) {
+        return res.status(400).json({ 
+          message: 'Failed to register with Supabase Auth', 
+          error: authError.message 
+        });
+      }
+
+      // Get the Supabase auth_id
+      const authId = authData.user.id;
+
+      // Create user in our database with the auth_id
+      const newUser = await userModel.createWithAuthId(username, email, password, authId);
 
       res.status(201).json({
         message: 'User registered successfully',
@@ -38,9 +52,8 @@ const userController = {
           userId: newUser.user_id,
           username: newUser.username,
           email: newUser.email,
-          subscriptionType: newUser.subscription_type,
-        },
-        token,
+          subscriptionType: newUser.subscription_type
+        }
       });
     } catch (error) {
       console.error('Registration error:', error);
@@ -48,7 +61,8 @@ const userController = {
     }
   },
 
-  // Login user
+  // Login user - this is now handled by authController in authRoutes.js
+  // but keeping this for backwards compatibility if needed
   async login(req, res) {
     try {
       const { email, password } = req.body;
@@ -60,25 +74,33 @@ const userController = {
           .json({ message: 'Email and password are required' });
       }
 
-      // Find user
-      const user = await userModel.findByEmail(email);
+      // Initialize Supabase client
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      // Authenticate with Supabase
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (authError) {
+        return res.status(401).json({ 
+          message: 'Invalid credentials', 
+          error: authError.message 
+        });
+      }
+
+      // Get user from our database using auth_id
+      const user = await userModel.findByAuthId(authData.user.id);
+
       if (!user) {
-        return res.status(401).json({ message: 'Invalid credentials' });
+        // Special case: User exists in Supabase but not in our database
+        return res.status(404).json({ 
+          message: 'User account not properly set up. Please contact support.' 
+        });
       }
 
-      // Verify password
-      const passwordMatch = await bcrypt.compare(password, user.password_hash);
-      if (!passwordMatch) {
-        return res.status(401).json({ message: 'Invalid credentials' });
-      }
-
-      // Generate JWT
-      const token = jwt.sign(
-        { userId: user.user_id, email: user.email },
-        process.env.JWT_SECRET,
-        { expiresIn: '7d' },
-      );
-
+      // Return user data with token
       res.json({
         message: 'Login successful',
         user: {
@@ -87,7 +109,7 @@ const userController = {
           email: user.email,
           subscriptionType: user.subscription_type,
         },
-        token,
+        session: authData.session
       });
     } catch (error) {
       console.error('Login error:', error);
