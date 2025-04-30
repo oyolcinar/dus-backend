@@ -1,3 +1,6 @@
+/**
+ * Routes for user administration
+ */
 const express = require('express');
 const router = express.Router();
 const userAdminController = require('../controllers/userAdminController');
@@ -22,11 +25,10 @@ const { authorize, authorizePermission } = require('../middleware/authorize');
  *       500:
  *         description: Server error
  */
-router.get(
-  '/users',
-  authSupabase,
-  authorize(['admin']),
-  userAdminController.getAllUsers,
+router.get('/users', 
+  authSupabase, 
+  authorize(['admin']), 
+  userAdminController.getAllUsers
 );
 
 /**
@@ -69,11 +71,10 @@ router.get(
  *       500:
  *         description: Server error
  */
-router.put(
-  '/users/:userId/role',
-  authSupabase,
-  authorize(['admin']),
-  userAdminController.updateUserRole,
+router.put('/users/:userId/role', 
+  authSupabase, 
+  authorize(['admin']), 
+  userAdminController.updateUserRole
 );
 
 /**
@@ -94,11 +95,10 @@ router.put(
  *       500:
  *         description: Server error
  */
-router.get(
-  '/roles',
-  authSupabase,
-  authorize(['admin']),
-  userAdminController.getRolesAndPermissions,
+router.get('/roles', 
+  authSupabase, 
+  authorize(['admin']), 
+  userAdminController.getRolesAndPermissions
 );
 
 module.exports = router;

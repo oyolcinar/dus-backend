@@ -1,85 +1,34 @@
 const express = require('express');
 const router = express.Router();
 const studyController = require('../controllers/studyController');
-const authMiddleware = require('../middleware/auth');
+// Replace the old auth middleware with the new one
+const authSupabase = require('../middleware/authSupabase');
 
 /**
  * @swagger
  * tags:
  *   name: Study
- *   description: Study progress and session management
+ *   description: Study session management
  */
-
-/**
- * @swagger
- * /api/study/progress:
- *   post:
- *     summary: Update study progress
- *     tags: [Study]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - subtopicId
- *               - repetitionCount
- *               - masteryLevel
- *             properties:
- *               subtopicId:
- *                 type: integer
- *               repetitionCount:
- *                 type: integer
- *               masteryLevel:
- *                 type: integer
- *                 minimum: 0
- *                 maximum: 10
- *     responses:
- *       200:
- *         description: Progress updated successfully
- *       400:
- *         description: Invalid input
- *       401:
- *         description: Unauthorized
- *       404:
- *         description: Subtopic not found
- */
-router.post('/progress', authMiddleware, studyController.updateProgress);
-
-/**
- * @swagger
- * /api/study/progress:
- *   get:
- *     summary: Get user's study progress
- *     tags: [Study]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: User's study progress
- *       401:
- *         description: Unauthorized
- */
-router.get('/progress', authMiddleware, studyController.getUserProgress);
 
 /**
  * @swagger
  * /api/study/sessions/start:
  *   post:
- *     summary: Start a study session
+ *     summary: Start a new study session
  *     tags: [Study]
  *     security:
  *       - bearerAuth: []
  *     responses:
- *       200:
- *         description: Study session started
+ *       201:
+ *         description: Study session started successfully
  *       401:
  *         description: Unauthorized
  */
-router.post('/sessions/start', authMiddleware, studyController.startSession);
+router.post('/sessions/start', 
+  authSupabase, 
+  studyController.startSession
+);
 
 /**
  * @swagger
@@ -98,19 +47,24 @@ router.post('/sessions/start', authMiddleware, studyController.startSession);
  *         description: Session ID
  *     responses:
  *       200:
- *         description: Study session ended
+ *         description: Study session ended successfully
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - you can only end your own sessions
  *       404:
  *         description: Session not found
  */
-router.post('/sessions/:id/end', authMiddleware, studyController.endSession);
+router.post('/sessions/:id/end', 
+  authSupabase, 
+  studyController.endSession
+);
 
 /**
  * @swagger
- * /api/study/sessions/{id}/details:
+ * /api/study/sessions/{id}/add-subtopic:
  *   post:
- *     summary: Add detail to a study session
+ *     summary: Add a subtopic to a study session
  *     tags: [Study]
  *     security:
  *       - bearerAuth: []
@@ -135,18 +89,22 @@ router.post('/sessions/:id/end', authMiddleware, studyController.endSession);
  *                 type: integer
  *               duration:
  *                 type: integer
+ *                 description: Duration in minutes
  *     responses:
- *       200:
- *         description: Session detail added
+ *       201:
+ *         description: Subtopic added successfully
  *       400:
  *         description: Invalid input
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - you can only modify your own sessions
+ *       404:
+ *         description: Session or subtopic not found
  */
-router.post(
-  '/sessions/:id/details',
-  authMiddleware,
-  studyController.addSessionDetail,
+router.post('/sessions/:id/add-subtopic', 
+  authSupabase, 
+  studyController.addSubtopicToSession
 );
 
 /**
@@ -157,13 +115,27 @@ router.post(
  *     tags: [Study]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         description: Maximum number of results
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         description: Page number
  *     responses:
  *       200:
- *         description: User's study sessions
+ *         description: List of study sessions
  *       401:
  *         description: Unauthorized
  */
-router.get('/sessions', authMiddleware, studyController.getUserSessions);
+router.get('/sessions', 
+  authSupabase, 
+  studyController.getUserSessions
+);
 
 /**
  * @swagger
@@ -182,33 +154,71 @@ router.get('/sessions', authMiddleware, studyController.getUserSessions);
  *         description: Session ID
  *     responses:
  *       200:
- *         description: Session details
+ *         description: Study session details
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - you can only view your own sessions unless admin
+ *       404:
+ *         description: Session not found
  */
-router.get('/sessions/:id', authMiddleware, studyController.getSessionDetails);
+router.get('/sessions/:id', 
+  authSupabase, 
+  studyController.getSessionById
+);
 
 /**
  * @swagger
- * /api/study/stats:
+ * /api/study/progress:
  *   get:
- *     summary: Get study statistics
+ *     summary: Get user's study progress
  *     tags: [Study]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Study statistics
+ *         description: User's study progress
  *       401:
  *         description: Unauthorized
  */
-router.get('/stats', authMiddleware, studyController.getStudyStats);
+router.get('/progress', 
+  authSupabase, 
+  studyController.getUserProgress
+);
 
 /**
  * @swagger
- * /api/study/analytics/errors:
+ * /api/study/progress/subtopic/{subtopicId}:
+ *   get:
+ *     summary: Get user's progress for a specific subtopic
+ *     tags: [Study]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: subtopicId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Subtopic ID
+ *     responses:
+ *       200:
+ *         description: User's progress for the subtopic
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Subtopic not found
+ */
+router.get('/progress/subtopic/:subtopicId', 
+  authSupabase, 
+  studyController.getSubtopicProgress
+);
+
+/**
+ * @swagger
+ * /api/study/progress/update:
  *   post:
- *     summary: Update error analytics
+ *     summary: Update study progress for a subtopic
  *     tags: [Study]
  *     security:
  *       - bearerAuth: []
@@ -220,24 +230,26 @@ router.get('/stats', authMiddleware, studyController.getStudyStats);
  *             type: object
  *             required:
  *               - subtopicId
- *               - isError
  *             properties:
  *               subtopicId:
  *                 type: integer
- *               isError:
- *                 type: boolean
+ *               repetitionCount:
+ *                 type: integer
+ *               masteryLevel:
+ *                 type: integer
  *     responses:
  *       200:
- *         description: Error analytics updated
+ *         description: Progress updated successfully
  *       400:
  *         description: Invalid input
  *       401:
  *         description: Unauthorized
+ *       404:
+ *         description: Subtopic not found
  */
-router.post(
-  '/analytics/errors',
-  authMiddleware,
-  studyController.updateErrorAnalytics,
+router.post('/progress/update', 
+  authSupabase, 
+  studyController.updateProgress
 );
 
 /**
@@ -254,10 +266,49 @@ router.post(
  *       401:
  *         description: Unauthorized
  */
-router.get(
-  '/analytics/errors',
-  authMiddleware,
-  studyController.getUserErrorAnalytics,
+router.get('/analytics/errors', 
+  authSupabase, 
+  studyController.getErrorAnalytics
+);
+
+/**
+ * @swagger
+ * /api/study/analytics/errors/update:
+ *   post:
+ *     summary: Update error analytics for a subtopic
+ *     tags: [Study]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - subtopicId
+ *               - errorCount
+ *               - totalAttempts
+ *             properties:
+ *               subtopicId:
+ *                 type: integer
+ *               errorCount:
+ *                 type: integer
+ *               totalAttempts:
+ *                 type: integer
+ *     responses:
+ *       200:
+ *         description: Error analytics updated successfully
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Subtopic not found
+ */
+router.post('/analytics/errors/update', 
+  authSupabase, 
+  studyController.updateErrorAnalytics
 );
 
 module.exports = router;

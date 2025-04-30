@@ -1,3 +1,6 @@
+/**
+ * Role-based authorization middleware
+ */
 const db = require('../config/db');
 
 // Middleware to check if user has a specific role
@@ -18,7 +21,7 @@ const authorize = (requiredRoles = []) => {
       // Check if user's role is in the list of required roles
       if (!requiredRoles.includes(userRole)) {
         return res.status(403).json({
-          message: 'You do not have permission to access this resource',
+          message: 'You do not have permission to access this resource'
         });
       }
 
@@ -44,26 +47,24 @@ const authorizePermission = (requiredPermission) => {
       const query = `
         SELECT has_permission($1, $2) AS has_permission
       `;
-
+      
       const result = await db.query(query, [userRole, requiredPermission]);
-
+      
       if (!result.rows[0].has_permission) {
         return res.status(403).json({
-          message: `You don't have the '${requiredPermission}' permission required for this action`,
+          message: `You don't have the '${requiredPermission}' permission required for this action`
         });
       }
 
       next();
     } catch (error) {
       console.error('Permission check error:', error);
-      return res
-        .status(500)
-        .json({ message: 'Permission verification failed' });
+      return res.status(500).json({ message: 'Permission verification failed' });
     }
   };
 };
 
 module.exports = {
   authorize,
-  authorizePermission,
+  authorizePermission
 };

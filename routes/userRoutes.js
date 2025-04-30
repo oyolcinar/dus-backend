@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController');
-const authMiddleware = require('../middleware/auth');
+// Replace the old auth middleware with the new one
+const authSupabase = require('../middleware/authSupabase');
 
 /**
  * @swagger
@@ -47,7 +48,7 @@ router.post('/register', userController.register);
  * @swagger
  * /api/users/login:
  *   post:
- *     summary: User login
+ *     summary: Login
  *     tags: [Users]
  *     requestBody:
  *       required: true
@@ -75,7 +76,7 @@ router.post('/login', userController.login);
  * @swagger
  * /api/users/profile:
  *   get:
- *     summary: Get user profile
+ *     summary: Get current user profile
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -85,13 +86,16 @@ router.post('/login', userController.login);
  *       401:
  *         description: Unauthorized
  */
-router.get('/profile', authMiddleware, userController.getProfile);
+router.get('/profile', 
+  authSupabase, 
+  userController.getProfile
+);
 
 /**
  * @swagger
  * /api/users/search:
  *   get:
- *     summary: Search for users
+ *     summary: Search users
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -101,16 +105,19 @@ router.get('/profile', authMiddleware, userController.getProfile);
  *         required: true
  *         schema:
  *           type: string
- *         description: Search query (minimum 3 characters)
+ *         description: Search query (min 3 characters)
  *     responses:
  *       200:
  *         description: List of matching users
  *       400:
- *         description: Invalid query
+ *         description: Invalid search query
  *       401:
  *         description: Unauthorized
  */
-router.get('/search', authMiddleware, userController.searchUsers);
+router.get('/search', 
+  authSupabase, 
+  userController.searchUsers
+);
 
 /**
  * @swagger
@@ -128,7 +135,10 @@ router.get('/search', authMiddleware, userController.searchUsers);
  *       404:
  *         description: Statistics not found
  */
-router.get('/duel-stats', authMiddleware, userController.getDuelStats);
+router.get('/duel-stats', 
+  authSupabase, 
+  userController.getDuelStats
+);
 
 /**
  * @swagger
@@ -158,6 +168,9 @@ router.get('/duel-stats', authMiddleware, userController.getDuelStats);
  *       401:
  *         description: Unauthorized
  */
-router.post('/study-time', authMiddleware, userController.updateStudyTime);
+router.post('/study-time', 
+  authSupabase, 
+  userController.updateStudyTime
+);
 
 module.exports = router;
