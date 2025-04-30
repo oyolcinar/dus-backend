@@ -356,4 +356,100 @@ router.put(
   coachingController.updateVideo,
 );
 
+/**
+ * @swagger
+ * /api/coaching/notes/{id}:
+ *   delete:
+ *     summary: Delete a coaching note (admin/instructor only)
+ *     tags: [Coaching]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Coaching note ID
+ *     responses:
+ *       200:
+ *         description: Coaching note deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - insufficient permissions
+ *       404:
+ *         description: Coaching note not found
+ */
+router.delete(
+  '/notes/:id',
+  authSupabase,
+  authorizePermission('manage_coaching'),
+  coachingController.deleteNote,
+);
+
+/**
+ * @swagger
+ * /api/coaching/messages/{id}:
+ *   delete:
+ *     summary: Delete a motivational message (admin/instructor only)
+ *     tags: [Coaching]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Message ID
+ *     responses:
+ *       200:
+ *         description: Motivational message deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - insufficient permissions
+ *       404:
+ *         description: Motivational message not found
+ */
+router.delete(
+  '/messages/:id',
+  authSupabase,
+  authorizePermission('manage_motivation'),
+  coachingController.deleteMessage,
+);
+
+/**
+ * @swagger
+ * /api/coaching/videos/{id}:
+ *   delete:
+ *     summary: Delete a strategy video (admin/instructor only)
+ *     tags: [Coaching]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Video ID
+ *     responses:
+ *       200:
+ *         description: Strategy video deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - insufficient permissions
+ *       404:
+ *         description: Strategy video not found
+ */
+router.delete(
+  '/videos/:id',
+  authSupabase,
+  authorizePermission('manage_strategy'),
+  coachingController.deleteVideo,
+);
+
 module.exports = router;
