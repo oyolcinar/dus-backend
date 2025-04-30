@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const friendController = require('../controllers/friendController');
-const authMiddleware = require('../middleware/auth');
+// Replace the old auth middleware with the new one
+const authSupabase = require('../middleware/authSupabase');
 
 /**
  * @swagger
@@ -39,7 +40,7 @@ const authMiddleware = require('../middleware/auth');
  *       404:
  *         description: User not found
  */
-router.post('/request', authMiddleware, friendController.sendRequest);
+router.post('/request', authSupabase, friendController.sendRequest);
 
 /**
  * @swagger
@@ -61,14 +62,12 @@ router.post('/request', authMiddleware, friendController.sendRequest);
  *         description: Friend request accepted successfully
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - you can only accept requests sent to you
  *       404:
  *         description: Friend request not found
  */
-router.post(
-  '/:friendId/accept',
-  authMiddleware,
-  friendController.acceptRequest,
-);
+router.post('/:friendId/accept', authSupabase, friendController.acceptRequest);
 
 /**
  * @swagger
@@ -90,14 +89,12 @@ router.post(
  *         description: Friend request rejected successfully
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - you can only reject requests sent to you
  *       404:
  *         description: Friend request not found
  */
-router.post(
-  '/:friendId/reject',
-  authMiddleware,
-  friendController.rejectRequest,
-);
+router.post('/:friendId/reject', authSupabase, friendController.rejectRequest);
 
 /**
  * @swagger
@@ -113,7 +110,7 @@ router.post(
  *       401:
  *         description: Unauthorized
  */
-router.get('/', authMiddleware, friendController.getUserFriends);
+router.get('/', authSupabase, friendController.getUserFriends);
 
 /**
  * @swagger
@@ -129,7 +126,7 @@ router.get('/', authMiddleware, friendController.getUserFriends);
  *       401:
  *         description: Unauthorized
  */
-router.get('/requests', authMiddleware, friendController.getPendingRequests);
+router.get('/requests', authSupabase, friendController.getPendingRequests);
 
 /**
  * @swagger
@@ -151,9 +148,11 @@ router.get('/requests', authMiddleware, friendController.getPendingRequests);
  *         description: Friend removed successfully
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - you can only remove your own friends
  *       404:
  *         description: Friend not found
  */
-router.delete('/:friendId', authMiddleware, friendController.removeFriend);
+router.delete('/:friendId', authSupabase, friendController.removeFriend);
 
 module.exports = router;

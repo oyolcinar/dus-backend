@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const coachingController = require('../controllers/coachingController');
-const authMiddleware = require('../middleware/auth');
+// Replace the old auth middleware with the new ones
+const authSupabase = require('../middleware/authSupabase');
+const { authorize, authorizePermission } = require('../middleware/authorize');
 
 /**
  * @swagger
@@ -14,7 +16,7 @@ const authMiddleware = require('../middleware/auth');
  * @swagger
  * /api/coaching/notes:
  *   post:
- *     summary: Create a new coaching note (admin only)
+ *     summary: Create a new coaching note (admin/instructor only)
  *     tags: [Coaching]
  *     security:
  *       - bearerAuth: []
@@ -49,8 +51,15 @@ const authMiddleware = require('../middleware/auth');
  *         description: Invalid input
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - insufficient permissions
  */
-router.post('/notes', authMiddleware, coachingController.createNote);
+router.post(
+  '/notes',
+  authSupabase,
+  authorizePermission('manage_coaching'),
+  coachingController.createNote,
+);
 
 /**
  * @swagger
@@ -82,7 +91,7 @@ router.get('/notes/latest', coachingController.getLatestNote);
  * @swagger
  * /api/coaching/messages:
  *   post:
- *     summary: Create a new motivational message (admin only)
+ *     summary: Create a new motivational message (admin/instructor only)
  *     tags: [Coaching]
  *     security:
  *       - bearerAuth: []
@@ -113,8 +122,15 @@ router.get('/notes/latest', coachingController.getLatestNote);
  *         description: Invalid input
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - insufficient permissions
  */
-router.post('/messages', authMiddleware, coachingController.createMessage);
+router.post(
+  '/messages',
+  authSupabase,
+  authorizePermission('manage_motivation'),
+  coachingController.createMessage,
+);
 
 /**
  * @swagger
@@ -132,7 +148,7 @@ router.get('/messages', coachingController.getAllMessages);
  * @swagger
  * /api/coaching/videos:
  *   post:
- *     summary: Create a new strategy video (admin only)
+ *     summary: Create a new strategy video (admin/instructor only)
  *     tags: [Coaching]
  *     security:
  *       - bearerAuth: []
@@ -161,8 +177,15 @@ router.get('/messages', coachingController.getAllMessages);
  *         description: Invalid input
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - insufficient permissions
  */
-router.post('/videos', authMiddleware, coachingController.createVideo);
+router.post(
+  '/videos',
+  authSupabase,
+  authorizePermission('manage_strategy'),
+  coachingController.createVideo,
+);
 
 /**
  * @swagger
@@ -181,5 +204,156 @@ router.post('/videos', authMiddleware, coachingController.createVideo);
  *         description: List of strategy videos
  */
 router.get('/videos', coachingController.getAllVideos);
+
+/**
+ * @swagger
+ * /api/coaching/notes/{id}:
+ *   put:
+ *     summary: Update a coaching note (admin/instructor only)
+ *     tags: [Coaching]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Coaching note ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *               content:
+ *                 type: string
+ *               publishDate:
+ *                 type: string
+ *                 format: date
+ *               weekNumber:
+ *                 type: integer
+ *               year:
+ *                 type: integer
+ *     responses:
+ *       200:
+ *         description: Coaching note updated successfully
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - insufficient permissions
+ *       404:
+ *         description: Coaching note not found
+ */
+router.put(
+  '/notes/:id',
+  authSupabase,
+  authorizePermission('manage_coaching'),
+  coachingController.updateNote,
+);
+
+/**
+ * @swagger
+ * /api/coaching/messages/{id}:
+ *   put:
+ *     summary: Update a motivational message (admin/instructor only)
+ *     tags: [Coaching]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Message ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *               audioUrl:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               publishDate:
+ *                 type: string
+ *                 format: date
+ *     responses:
+ *       200:
+ *         description: Motivational message updated successfully
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - insufficient permissions
+ *       404:
+ *         description: Message not found
+ */
+router.put(
+  '/messages/:id',
+  authSupabase,
+  authorizePermission('manage_motivation'),
+  coachingController.updateMessage,
+);
+
+/**
+ * @swagger
+ * /api/coaching/videos/{id}:
+ *   put:
+ *     summary: Update a strategy video (admin/instructor only)
+ *     tags: [Coaching]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Video ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *               externalUrl:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               isPremium:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Strategy video updated successfully
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - insufficient permissions
+ *       404:
+ *         description: Video not found
+ */
+router.put(
+  '/videos/:id',
+  authSupabase,
+  authorizePermission('manage_strategy'),
+  coachingController.updateVideo,
+);
 
 module.exports = router;

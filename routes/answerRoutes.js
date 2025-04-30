@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const answerController = require('../controllers/answerController');
-const authMiddleware = require('../middleware/auth');
+// Replace the old auth middleware with the new one
+const authSupabase = require('../middleware/authSupabase');
 
 /**
  * @swagger
@@ -48,7 +49,7 @@ const authMiddleware = require('../middleware/auth');
  *       404:
  *         description: Test result or question not found
  */
-router.post('/', authMiddleware, answerController.create);
+router.post('/', authSupabase, answerController.create);
 
 /**
  * @swagger
@@ -93,7 +94,7 @@ router.post('/', authMiddleware, answerController.create);
  *       401:
  *         description: Unauthorized
  */
-router.post('/batch', authMiddleware, answerController.createBatch);
+router.post('/batch', authSupabase, answerController.createBatch);
 
 /**
  * @swagger
@@ -115,9 +116,11 @@ router.post('/batch', authMiddleware, answerController.createBatch);
  *         description: List of answers
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - you don't have permission to view these answers
  *       404:
  *         description: Test result not found
  */
-router.get('/result/:resultId', authMiddleware, answerController.getByResultId);
+router.get('/result/:resultId', authSupabase, answerController.getByResultId);
 
 module.exports = router;

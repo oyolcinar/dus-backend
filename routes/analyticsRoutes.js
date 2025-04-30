@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const analyticsController = require('../controllers/analyticsController');
-const authMiddleware = require('../middleware/auth');
+// Replace the old auth middleware with the new one
+const authSupabase = require('../middleware/authSupabase');
+const { authorize, authorizePermission } = require('../middleware/authorize');
 
 /**
  * @swagger
@@ -24,7 +26,7 @@ const authMiddleware = require('../middleware/auth');
  *       401:
  *         description: Unauthorized
  */
-router.get('/dashboard', authMiddleware, analyticsController.getUserDashboard);
+router.get('/dashboard', authSupabase, analyticsController.getUserDashboard);
 
 /**
  * @swagger
@@ -42,7 +44,7 @@ router.get('/dashboard', authMiddleware, analyticsController.getUserDashboard);
  */
 router.get(
   '/weekly-progress',
-  authMiddleware,
+  authSupabase,
   analyticsController.getWeeklyProgress,
 );
 
@@ -60,6 +62,58 @@ router.get(
  *       401:
  *         description: Unauthorized
  */
-router.get('/topics', authMiddleware, analyticsController.getTopicAnalytics);
+router.get('/topics', authSupabase, analyticsController.getTopicAnalytics);
+
+/**
+ * @swagger
+ * /api/analytics/admin/overview:
+ *   get:
+ *     summary: Get admin analytics overview (admin only)
+ *     tags: [Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Admin analytics overview
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - insufficient permissions
+ */
+router.get(
+  '/admin/overview',
+  authSupabase,
+  authorizePermission('view_analytics'),
+  analyticsController.getAdminAnalyticsOverview,
+);
+
+/**
+ * @swagger
+ * /api/analytics/admin/user-performance:
+ *   get:
+ *     summary: Get user performance analytics (admin/instructor only)
+ *     tags: [Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: userId
+ *         schema:
+ *           type: integer
+ *         description: Optional user ID to filter by specific user
+ *     responses:
+ *       200:
+ *         description: User performance analytics
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - insufficient permissions
+ */
+router.get(
+  '/admin/user-performance',
+  authSupabase,
+  authorizePermission('view_analytics'),
+  analyticsController.getUserPerformanceAnalytics,
+);
 
 module.exports = router;

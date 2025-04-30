@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const duelController = require('../controllers/duelController');
-const authMiddleware = require('../middleware/auth');
+// Replace the old auth middleware with the new one
+const authSupabase = require('../middleware/authSupabase');
 
 /**
  * @swagger
@@ -42,7 +43,7 @@ const authMiddleware = require('../middleware/auth');
  *       404:
  *         description: Opponent or test not found
  */
-router.post('/challenge', authMiddleware, duelController.challenge);
+router.post('/challenge', authSupabase, duelController.challenge);
 
 /**
  * @swagger
@@ -58,7 +59,7 @@ router.post('/challenge', authMiddleware, duelController.challenge);
  *       401:
  *         description: Unauthorized
  */
-router.get('/pending', authMiddleware, duelController.getPendingChallenges);
+router.get('/pending', authSupabase, duelController.getPendingChallenges);
 
 /**
  * @swagger
@@ -74,7 +75,7 @@ router.get('/pending', authMiddleware, duelController.getPendingChallenges);
  *       401:
  *         description: Unauthorized
  */
-router.get('/active', authMiddleware, duelController.getActiveDuels);
+router.get('/active', authSupabase, duelController.getActiveDuels);
 
 /**
  * @swagger
@@ -90,7 +91,7 @@ router.get('/active', authMiddleware, duelController.getActiveDuels);
  *       401:
  *         description: Unauthorized
  */
-router.get('/completed', authMiddleware, duelController.getCompletedDuels);
+router.get('/completed', authSupabase, duelController.getCompletedDuels);
 
 /**
  * @swagger
@@ -98,6 +99,8 @@ router.get('/completed', authMiddleware, duelController.getCompletedDuels);
  *   get:
  *     summary: Get duel details
  *     tags: [Duels]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -108,10 +111,14 @@ router.get('/completed', authMiddleware, duelController.getCompletedDuels);
  *     responses:
  *       200:
  *         description: Duel details
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - you don't have permission to view this duel
  *       404:
  *         description: Duel not found
  */
-router.get('/:id', duelController.getDuelDetails);
+router.get('/:id', authSupabase, duelController.getDuelDetails);
 
 /**
  * @swagger
@@ -140,7 +147,7 @@ router.get('/:id', duelController.getDuelDetails);
  *       404:
  *         description: Duel not found
  */
-router.post('/:id/accept', authMiddleware, duelController.acceptChallenge);
+router.post('/:id/accept', authSupabase, duelController.acceptChallenge);
 
 /**
  * @swagger
@@ -169,7 +176,7 @@ router.post('/:id/accept', authMiddleware, duelController.acceptChallenge);
  *       404:
  *         description: Duel not found
  */
-router.post('/:id/decline', authMiddleware, duelController.declineChallenge);
+router.post('/:id/decline', authSupabase, duelController.declineChallenge);
 
 /**
  * @swagger
@@ -214,7 +221,7 @@ router.post('/:id/decline', authMiddleware, duelController.declineChallenge);
  *       404:
  *         description: Duel not found
  */
-router.post('/:id/result', authMiddleware, duelController.submitResult);
+router.post('/:id/result', authSupabase, duelController.submitResult);
 
 /**
  * @swagger
@@ -230,6 +237,6 @@ router.post('/:id/result', authMiddleware, duelController.submitResult);
  *       401:
  *         description: Unauthorized
  */
-router.get('/stats/user', authMiddleware, duelController.getUserStats);
+router.get('/stats/user', authSupabase, duelController.getUserStats);
 
 module.exports = router;

@@ -137,6 +137,97 @@ const userModel = {
     const result = await db.query(query, [`%${searchTerm}%`, limit]);
     return result.rows;
   },
+  // Find user by Supabase auth_id
+  async findByAuthId(authId) {
+    const query = `
+    SELECT user_id, username, email, password_hash, date_registered, 
+           total_duels, duels_won, duels_lost, longest_losing_streak, 
+           current_losing_streak, total_study_time, subscription_type,
+           role, auth_id
+    FROM users
+    WHERE auth_id = $1
+  `;
+
+    const result = await db.query(query, [authId]);
+    return result.rows[0];
+  },
+
+  // Create a new user with auth_id
+  async createWithAuthId(username, email, password, authId) {
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const query = `
+    INSERT INTO users (
+      username, email, password_hash, total_duels, duels_won, 
+      duels_lost, longest_losing_streak, current_losing_streak, 
+      total_study_time, subscription_type, auth_id, role
+    )
+    VALUES ($1, $2, $3, 0, 0, 0, 0, 0, 0, 'free', $4, 'student')
+    RETURNING user_id, username, email, date_registered, total_duels, 
+              duels_won, duels_lost, longest_losing_streak, current_losing_streak, 
+              total_study_time, subscription_type, role, auth_id
+  `;
+
+    const values = [username, email, hashedPassword, authId];
+    const result = await db.query(query, values);
+
+    return result.rows[0];
+  },
+
+  // Link existing user to Supabase auth_id
+  async linkUserToAuthId(userId, authId) {
+    const query = `
+    UPDATE users
+    SET auth_id = $2
+    WHERE user_id = $1
+    RETURNING user_id, auth_id
+  `;
+
+    const result = await db.query(query, [userId, authId]);
+    return result.rows[0];
+  },
+
+  // Get user role and permissions
+  async getUserRoleAndPermissions(userId) {
+    const query = `
+    SELECT u.role, 
+           ARRAY_AGG(p.name) AS permissions
+    FROM users u
+    LEFT JOIN role_permissions rp ON u.role = rp.role
+    LEFT JOIN permissions p ON rp.permission_id = p.permission_id
+    WHERE u.user_id = $1
+    GROUP BY u.role
+  `;
+
+    const result = await db.query(query, [userId]);
+    return result.rows[0];
+  },
+
+  // Get all permissions for a role
+  async getRolePermissions(role) {
+    const query = `
+    SELECT p.name, p.description
+    FROM permissions p
+    JOIN role_permissions rp ON p.permission_id = rp.permission_id
+    WHERE rp.role = $1
+  `;
+
+    const result = await db.query(query, [role]);
+    return result.rows;
+  },
+
+  // Update a user's role
+  async updateUserRole(userId, role) {
+    const query = `
+    UPDATE users
+    SET role = $2
+    WHERE user_id = $1
+    RETURNING user_id, username, email, role
+  `;
+
+    const result = await db.query(query, [userId, role]);
+    return result.rows[0];
+  },
 };
 
 module.exports = userModel;

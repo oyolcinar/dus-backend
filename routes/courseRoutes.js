@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const courseController = require('../controllers/courseController');
-const authMiddleware = require('../middleware/auth');
+// Replace the old auth middleware with the new ones
+const authSupabase = require('../middleware/authSupabase');
+const { authorize, authorizePermission } = require('../middleware/authorize');
 
 /**
  * @swagger
@@ -40,8 +42,15 @@ const authMiddleware = require('../middleware/auth');
  *         description: Invalid input
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - insufficient permissions
  */
-router.post('/', authMiddleware, courseController.create);
+router.post(
+  '/',
+  authSupabase,
+  authorizePermission('manage_courses'),
+  courseController.create,
+);
 
 /**
  * @swagger
@@ -108,10 +117,17 @@ router.get('/:id', courseController.getById);
  *         description: Course updated successfully
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - insufficient permissions
  *       404:
  *         description: Course not found
  */
-router.put('/:id', authMiddleware, courseController.update);
+router.put(
+  '/:id',
+  authSupabase,
+  authorizePermission('manage_courses'),
+  courseController.update,
+);
 
 /**
  * @swagger
@@ -133,9 +149,16 @@ router.put('/:id', authMiddleware, courseController.update);
  *         description: Course deleted successfully
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - insufficient permissions
  *       404:
  *         description: Course not found
  */
-router.delete('/:id', authMiddleware, courseController.delete);
+router.delete(
+  '/:id',
+  authSupabase,
+  authorizePermission('manage_courses'),
+  courseController.delete,
+);
 
 module.exports = router;

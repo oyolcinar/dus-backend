@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const duelResultController = require('../controllers/duelResultController');
-const authMiddleware = require('../middleware/auth');
+// Replace the old auth middleware with the new one
+const authSupabase = require('../middleware/authSupabase');
 
 /**
  * @swagger
@@ -46,10 +47,12 @@ const authMiddleware = require('../middleware/auth');
  *         description: Invalid input
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - you do not have permission to record this duel result
  *       404:
  *         description: Duel or winner not found
  */
-router.post('/', authMiddleware, duelResultController.create);
+router.post('/', authSupabase, duelResultController.create);
 
 /**
  * @swagger
@@ -71,10 +74,12 @@ router.post('/', authMiddleware, duelResultController.create);
  *         description: Duel result
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - you do not have permission to view this duel result
  *       404:
  *         description: Duel or result not found
  */
-router.get('/:duelId', authMiddleware, duelResultController.getByDuelId);
+router.get('/:duelId', authSupabase, duelResultController.getByDuelId);
 
 /**
  * @swagger
@@ -96,14 +101,31 @@ router.get('/:duelId', authMiddleware, duelResultController.getByDuelId);
  *         description: User's duel statistics
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - you do not have permission to view this user's statistics
  *       404:
  *         description: User not found
  */
 router.get(
   '/stats/user/:userId',
-  authMiddleware,
+  authSupabase,
   duelResultController.getUserStats,
 );
-router.get('/stats/user', authMiddleware, duelResultController.getUserStats);
+
+/**
+ * @swagger
+ * /api/duel-results/stats/user:
+ *   get:
+ *     summary: Get current user's duel statistics
+ *     tags: [Duel Results]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Current user's duel statistics
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/stats/user', authSupabase, duelResultController.getUserStats);
 
 module.exports = router;

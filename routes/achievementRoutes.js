@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const achievementController = require('../controllers/achievementController');
-const authMiddleware = require('../middleware/auth');
+// Replace the old auth middleware with the new ones
+const authSupabase = require('../middleware/authSupabase');
+const { authorize, authorizePermission } = require('../middleware/authorize');
 
 /**
  * @swagger
@@ -41,8 +43,15 @@ const authMiddleware = require('../middleware/auth');
  *         description: Invalid input
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - insufficient permissions
  */
-router.post('/', authMiddleware, achievementController.create);
+router.post(
+  '/',
+  authSupabase,
+  authorizePermission('manage_achievements'),
+  achievementController.create,
+);
 
 /**
  * @swagger
@@ -54,6 +63,7 @@ router.post('/', authMiddleware, achievementController.create);
  *       200:
  *         description: List of achievements
  */
+// This is publicly accessible, no auth needed
 router.get('/', achievementController.getAll);
 
 /**
@@ -75,6 +85,7 @@ router.get('/', achievementController.getAll);
  *       404:
  *         description: Achievement not found
  */
+// This is publicly accessible, no auth needed
 router.get('/:id', achievementController.getById);
 
 /**
@@ -109,10 +120,17 @@ router.get('/:id', achievementController.getById);
  *         description: Achievement updated successfully
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - insufficient permissions
  *       404:
  *         description: Achievement not found
  */
-router.put('/:id', authMiddleware, achievementController.update);
+router.put(
+  '/:id',
+  authSupabase,
+  authorizePermission('manage_achievements'),
+  achievementController.update,
+);
 
 /**
  * @swagger
@@ -134,10 +152,17 @@ router.put('/:id', authMiddleware, achievementController.update);
  *         description: Achievement deleted successfully
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - insufficient permissions
  *       404:
  *         description: Achievement not found
  */
-router.delete('/:id', authMiddleware, achievementController.delete);
+router.delete(
+  '/:id',
+  authSupabase,
+  authorizePermission('manage_achievements'),
+  achievementController.delete,
+);
 
 /**
  * @swagger
@@ -168,10 +193,17 @@ router.delete('/:id', authMiddleware, achievementController.delete);
  *         description: Invalid input
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - insufficient permissions
  *       404:
  *         description: Achievement or user not found
  */
-router.post('/award', authMiddleware, achievementController.awardAchievement);
+router.post(
+  '/award',
+  authSupabase,
+  authorizePermission('manage_achievements'),
+  achievementController.awardAchievement,
+);
 
 /**
  * @swagger
@@ -187,6 +219,6 @@ router.post('/award', authMiddleware, achievementController.awardAchievement);
  *       401:
  *         description: Unauthorized
  */
-router.get('/user', authMiddleware, achievementController.getUserAchievements);
+router.get('/user', authSupabase, achievementController.getUserAchievements);
 
 module.exports = router;

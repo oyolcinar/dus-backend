@@ -82,7 +82,11 @@ const friendRoutes = require('./routes/friendRoutes');
 const answerRoutes = require('./routes/answerRoutes');
 const duelResultRoutes = require('./routes/duelResultRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
+const authRoutes = require('./routes/authRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/tests', testRoutes);
 app.use('/api/questions', questionRoutes);
