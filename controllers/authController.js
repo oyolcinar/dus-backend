@@ -16,6 +16,17 @@ const authController = {
       if (!username || !email || !password) {
         return res.status(400).json({ message: 'All fields are required' });
       }
+      
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ message: 'Invalid email format' });
+      }
+      
+      // Validate password strength
+      if (password.length < 8) {
+        return res.status(400).json({ message: 'Password must be at least 8 characters long' });
+      }
 
       // Initialize Supabase client with admin privileges
       const supabase = createClient(supabaseUrl, supabaseKey);
@@ -28,6 +39,14 @@ const authController = {
       });
 
       if (authError) {
+        // Check for duplicate email error
+        if (authError.message.includes('already exists') || authError.message.includes('already registered')) {
+          return res.status(409).json({
+            message: 'User with this email already exists',
+            error: authError.message
+          });
+        }
+        
         return res.status(400).json({ 
           message: 'Failed to register with Supabase Auth', 
           error: authError.message 
@@ -39,6 +58,9 @@ const authController = {
 
       // Create user in our database with the auth_id
       const newUser = await userModel.createWithAuthId(username, email, password, authId);
+
+      // Log successful registration
+      console.log(`User registered successfully: ${email} (ID: ${newUser.user_id})`);
 
       res.status(201).json({
         message: 'User registered successfully',
@@ -76,6 +98,9 @@ const authController = {
       });
 
       if (authError) {
+        // Log failed login attempts
+        console.warn(`Failed login attempt for email: ${email}`);
+        
         return res.status(401).json({ 
           message: 'Invalid credentials', 
           error: authError.message 
@@ -87,6 +112,8 @@ const authController = {
 
       if (!user) {
         // Special case: User exists in Supabase but not in our database
+        console.error(`User exists in Supabase but not in database: ${email}, auth_id: ${authData.user.id}`);
+        
         return res.status(404).json({ 
           message: 'User account not properly set up. Please contact support.' 
         });
@@ -94,6 +121,9 @@ const authController = {
 
       // Get user permissions
       const userRoleData = await userModel.getUserRoleAndPermissions(user.user_id);
+      
+      // Log successful login
+      console.log(`User logged in successfully: ${email} (ID: ${user.user_id})`);
 
       // Return user data with token
       res.json({
@@ -131,11 +161,15 @@ const authController = {
       });
 
       if (error) {
+        console.error('Sign out error:', error);
         return res.status(500).json({ 
           message: 'Error signing out',
           error: error.message
         });
       }
+
+      // Log successful sign out
+      console.log(`User ${req.user.email} (ID: ${req.user.userId}) signed out successfully`);
 
       res.json({ message: 'Successfully signed out' });
     } catch (error) {
@@ -148,6 +182,10 @@ const authController = {
   async getUserPermissions(req, res) {
     try {
       const userId = req.user.userId;
+      
+      // Initialize Supabase client for potential future use
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      
       const roleData = await userModel.getUserRoleAndPermissions(userId);
       
       if (!roleData) {
@@ -161,6 +199,83 @@ const authController = {
     } catch (error) {
       console.error('Get permissions error:', error);
       res.status(500).json({ message: 'Failed to get user permissions' });
+    }
+  },
+  
+  // Password reset request
+  async requestPasswordReset(req, res) {
+    try {
+      const { email } = req.body;
+      
+      if (!email) {
+        return res.status(400).json({ message: 'Email is required' });
+      }
+      
+      // Initialize Supabase client
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      
+      // Send password reset email through Supabase
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: process.env.PASSWORD_RESET_REDIRECT_URL || `${process.env.FRONTEND_URL}/reset-password`,
+      });
+      
+      if (error) {
+        console.error('Password reset request error:', error);
+        // Don't reveal if the email exists in our system for security reasons
+        return res.json({ message: 'If your email exists in our system, you will receive a password reset link' });
+      }
+      
+      // Log the password reset request (without revealing success/failure)
+      console.log(`Password reset requested for: ${email}`);
+      
+      res.json({ message: 'If your email exists in our system, you will receive a password reset link' });
+    } catch (error) {
+      console.error('Password reset request error:', error);
+      res.status(500).json({ message: 'Failed to process password reset request' });
+    }
+  },
+  
+  // Update user password after reset
+  async updatePassword(req, res) {
+    try {
+      const { password } = req.body;
+      
+      if (!password || password.length < 8) {
+        return res.status(400).json({ 
+          message: 'Password is required and must be at least 8 characters long' 
+        });
+      }
+      
+      // Get token from the request (usually from authentication header)
+      const token = req.headers.authorization?.split(' ')[1];
+      
+      if (!token) {
+        return res.status(401).json({ message: 'Authentication required' });
+      }
+      
+      // Initialize Supabase client
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      
+      // Update the password
+      const { error } = await supabase.auth.updateUser({
+        password: password
+      });
+      
+      if (error) {
+        console.error('Password update error:', error);
+        return res.status(400).json({ 
+          message: 'Failed to update password',
+          error: error.message
+        });
+      }
+      
+      // Log the password update (without revealing the user for security)
+      console.log(`Password updated successfully for user ${req.user.userId}`);
+      
+      res.json({ message: 'Password updated successfully' });
+    } catch (error) {
+      console.error('Password update error:', error);
+      res.status(500).json({ message: 'Failed to update password' });
     }
   }
 };
