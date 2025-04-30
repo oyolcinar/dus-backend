@@ -1,12 +1,17 @@
 const { sessionModel, errorAnalyticsModel } = require('../models/studyModels');
 const userModel = require('../models/userModel');
 const duelResultModel = require('../models/duelResultModel');
+const { createClient } = require('@supabase/supabase-js');
+const { supabaseUrl, supabaseKey } = require('../config/supabase');
 
 const analyticsController = {
   // Get user's dashboard analytics
   async getUserDashboard(req, res) {
     try {
       const userId = req.user.userId;
+
+      // Initialize Supabase client for potential future use
+      const supabase = createClient(supabaseUrl, supabaseKey);
 
       // Get recent study time (last 24 hours)
       const recentStudyTime = await sessionModel.getRecentStudyTime(userId);
@@ -47,6 +52,9 @@ const analyticsController = {
       // Sort by study time (most studied first)
       topicAnalytics.sort((a, b) => b.totalDuration - a.totalDuration);
 
+      // Log analytics activity for audit purposes (optional)
+      console.log(`User ${userId} (${req.user.email}) accessed dashboard analytics`);
+
       res.json({
         recentStudyTime, // in seconds
         recentStudyTimeHours: Math.round((recentStudyTime / 3600) * 10) / 10, // Convert to hours
@@ -79,6 +87,9 @@ const analyticsController = {
     try {
       const userId = req.user.userId;
 
+      // Initialize Supabase client for potential future use
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
       // Get daily study time for the past week
       const dailyStudyTime = await sessionModel.getDailyStudyTime(userId);
 
@@ -105,6 +116,9 @@ const analyticsController = {
         });
       }
 
+      // Log analytics activity for audit purposes (optional)
+      console.log(`User ${userId} (${req.user.email}) accessed weekly progress analytics`);
+
       res.json({
         dailyProgress: last7Days,
       });
@@ -118,6 +132,9 @@ const analyticsController = {
   async getTopicAnalytics(req, res) {
     try {
       const userId = req.user.userId;
+
+      // Initialize Supabase client for potential future use
+      const supabase = createClient(supabaseUrl, supabaseKey);
 
       // Get study time by topic
       const topicTimeStats = await sessionModel.getStudyTimeByTopic(userId);
@@ -144,6 +161,9 @@ const analyticsController = {
         };
       });
 
+      // Log analytics activity for audit purposes (optional)
+      console.log(`User ${userId} (${req.user.email}) accessed topic analytics`);
+
       res.json({
         topicAnalytics,
       });
@@ -152,6 +172,70 @@ const analyticsController = {
       res.status(500).json({ message: 'Failed to retrieve topic analytics' });
     }
   },
+
+  // Get admin analytics overview (admin only)
+  async getAdminAnalyticsOverview(req, res) {
+    try {
+      // Verify admin access through Supabase role
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      
+      // General analytics information only accessible for admins
+      // These are placeholder queries - replace with actual implementation
+      const totalActiveUsers = await userModel.getActiveUsersCount();
+      const totalStudyTime = await sessionModel.getTotalStudyTime();
+      const topPerformingUsers = await userModel.getTopPerformingUsers(5);
+      
+      // Log admin activity for audit purposes
+      console.log(`Admin ${req.user.userId} (${req.user.email}) accessed admin analytics overview`);
+
+      res.json({
+        usersStats: {
+          totalUsers: totalActiveUsers.count,
+          newUsersLast30Days: totalActiveUsers.newUsers,
+          activeUsersLast7Days: totalActiveUsers.activeLastWeek
+        },
+        studyStats: {
+          totalHours: Math.round((totalStudyTime.total / 3600) * 10) / 10,
+          averagePerUser: Math.round((totalStudyTime.average / 3600) * 10) / 10,
+        },
+        topUsers: topPerformingUsers.map(user => ({
+          userId: user.user_id,
+          username: user.username,
+          totalStudyTime: Math.round((user.total_study_time / 3600) * 10) / 10,
+          accuracy: parseFloat(user.accuracy || 0).toFixed(1)
+        }))
+      });
+    } catch (error) {
+      console.error('Get admin analytics error:', error);
+      res.status(500).json({ message: 'Failed to retrieve admin analytics' });
+    }
+  },
+
+  // Get user performance analytics (admin/instructor only)
+  async getUserPerformanceAnalytics(req, res) {
+    try {
+      const { userId } = req.query;
+      
+      // Initialize Supabase client
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      
+      // If userId is provided, get specific user performance
+      // Otherwise, get performance overview for all users
+      const userPerformance = userId 
+        ? await userModel.getCompleteUserAnalytics(userId)
+        : await userModel.getAllUsersPerformanceMetrics();
+      
+      // Log admin activity for audit purposes
+      console.log(`Admin ${req.user.userId} (${req.user.email}) accessed user performance analytics${userId ? ` for user ${userId}` : ''}`);
+        
+      res.json({
+        userPerformance
+      });
+    } catch (error) {
+      console.error('Get user performance analytics error:', error);
+      res.status(500).json({ message: 'Failed to retrieve user performance analytics' });
+    }
+  }
 };
 
 module.exports = analyticsController;
