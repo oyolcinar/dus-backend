@@ -52,10 +52,7 @@ const { authorize, authorizePermission } = require('../middleware/authorize');
  *       401:
  *         description: Unauthorized
  */
-router.post('/', 
-  authSupabase, 
-  studyPlanController.create
-);
+router.post('/', authSupabase, studyPlanController.create);
 
 /**
  * @swagger
@@ -96,10 +93,11 @@ router.post('/',
  *       403:
  *         description: Forbidden - insufficient permissions
  */
-router.post('/templates', 
-  authSupabase, 
-  authorizePermission('manage_study_plans'), 
-  studyPlanController.createTemplate
+router.post(
+  '/templates',
+  authSupabase,
+  authorizePermission('manage_study_plans'),
+  studyPlanController.createTemplate,
 );
 
 /**
@@ -116,10 +114,7 @@ router.post('/templates',
  *       401:
  *         description: Unauthorized
  */
-router.get('/user', 
-  authSupabase, 
-  studyPlanController.getUserPlans
-);
+router.get('/user', authSupabase, studyPlanController.getUserPlans);
 
 /**
  * @swagger
@@ -195,10 +190,7 @@ router.get('/:id', studyPlanController.getById);
  *       404:
  *         description: Study plan not found
  */
-router.put('/:id', 
-  authSupabase, 
-  studyPlanController.update
-);
+router.put('/:id', authSupabase, studyPlanController.update);
 
 /**
  * @swagger
@@ -225,10 +217,7 @@ router.put('/:id',
  *       404:
  *         description: Study plan not found
  */
-router.delete('/:id', 
-  authSupabase, 
-  studyPlanController.delete
-);
+router.delete('/:id', authSupabase, studyPlanController.delete);
 
 /**
  * @swagger
@@ -278,16 +267,13 @@ router.delete('/:id',
  *       404:
  *         description: Study plan not found
  */
-router.post('/:id/activities', 
-  authSupabase, 
-  studyPlanController.addActivity
-);
+router.post('/:id/activities', authSupabase, studyPlanController.addActivity);
 
 /**
  * @swagger
  * /api/studyPlans/{planId}/activities/{activityId}:
  *   put:
- *     summary: Update a study plan activity
+ *     summary: Update a study plan activity status
  *     tags: [Study Plans]
  *     security:
  *       - bearerAuth: []
@@ -310,16 +296,6 @@ router.post('/:id/activities',
  *           schema:
  *             type: object
  *             properties:
- *               title:
- *                 type: string
- *               description:
- *                 type: string
- *               duration:
- *                 type: integer
- *                 description: Duration in minutes
- *               scheduledDate:
- *                 type: string
- *                 format: date
  *               isCompleted:
  *                 type: boolean
  *     responses:
@@ -332,9 +308,10 @@ router.post('/:id/activities',
  *       404:
  *         description: Study plan or activity not found
  */
-router.put('/:planId/activities/:activityId', 
-  authSupabase, 
-  studyPlanController.updateActivity
+router.put(
+  '/:planId/activities/:activityId',
+  authSupabase,
+  studyPlanController.updateActivityStatus,
 );
 
 /**
@@ -368,9 +345,10 @@ router.put('/:planId/activities/:activityId',
  *       404:
  *         description: Study plan or activity not found
  */
-router.delete('/:planId/activities/:activityId', 
-  authSupabase, 
-  studyPlanController.deleteActivity
+router.delete(
+  '/:planId/activities/:activityId',
+  authSupabase,
+  studyPlanController.deleteActivity,
 );
 
 module.exports = router;
