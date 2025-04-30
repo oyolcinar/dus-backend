@@ -1,3 +1,6 @@
+/**
+ * Authentication controller for Supabase integration
+ */
 const { createClient } = require('@supabase/supabase-js');
 const bcrypt = require('bcrypt');
 const userModel = require('../models/userModel');
@@ -18,17 +21,16 @@ const authController = {
       const supabase = createClient(supabaseUrl, supabaseKey);
 
       // Create user in Supabase Auth
-      const { data: authData, error: authError } =
-        await supabase.auth.admin.createUser({
-          email,
-          password,
-          email_confirm: true,
-        });
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true
+      });
 
       if (authError) {
-        return res.status(400).json({
-          message: 'Failed to register with Supabase Auth',
-          error: authError.message,
+        return res.status(400).json({ 
+          message: 'Failed to register with Supabase Auth', 
+          error: authError.message 
         });
       }
 
@@ -36,12 +38,7 @@ const authController = {
       const authId = authData.user.id;
 
       // Create user in our database with the auth_id
-      const newUser = await userModel.createWithAuthId(
-        username,
-        email,
-        password,
-        authId,
-      );
+      const newUser = await userModel.createWithAuthId(username, email, password, authId);
 
       res.status(201).json({
         message: 'User registered successfully',
@@ -50,8 +47,8 @@ const authController = {
           username: newUser.username,
           email: newUser.email,
           role: newUser.role,
-          subscriptionType: newUser.subscription_type,
-        },
+          subscriptionType: newUser.subscription_type
+        }
       });
     } catch (error) {
       console.error('Registration error:', error);
@@ -66,25 +63,22 @@ const authController = {
 
       // Validate input
       if (!email || !password) {
-        return res
-          .status(400)
-          .json({ message: 'Email and password are required' });
+        return res.status(400).json({ message: 'Email and password are required' });
       }
 
       // Initialize Supabase client
       const supabase = createClient(supabaseUrl, supabaseKey);
 
       // Authenticate with Supabase
-      const { data: authData, error: authError } =
-        await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
 
       if (authError) {
-        return res.status(401).json({
-          message: 'Invalid credentials',
-          error: authError.message,
+        return res.status(401).json({ 
+          message: 'Invalid credentials', 
+          error: authError.message 
         });
       }
 
@@ -92,19 +86,14 @@ const authController = {
       const user = await userModel.findByAuthId(authData.user.id);
 
       if (!user) {
-        // Special case: User exists in Supabase but not in our database (rare)
-        // This might happen if the user was created in Supabase but the process failed
-        // before creating the user in our database
-        // You should create a placeholder user or handle this as needed
-        return res.status(404).json({
-          message: 'User account not properly set up. Please contact support.',
+        // Special case: User exists in Supabase but not in our database
+        return res.status(404).json({ 
+          message: 'User account not properly set up. Please contact support.' 
         });
       }
 
       // Get user permissions
-      const userRoleData = await userModel.getUserRoleAndPermissions(
-        user.user_id,
-      );
+      const userRoleData = await userModel.getUserRoleAndPermissions(user.user_id);
 
       // Return user data with token
       res.json({
@@ -115,9 +104,9 @@ const authController = {
           email: user.email,
           role: user.role,
           subscriptionType: user.subscription_type,
-          permissions: userRoleData?.permissions || [],
+          permissions: userRoleData?.permissions || []
         },
-        session: authData.session,
+        session: authData.session
       });
     } catch (error) {
       console.error('Login error:', error);
@@ -129,22 +118,22 @@ const authController = {
   async signOut(req, res) {
     try {
       const token = req.headers.authorization?.split(' ')[1];
-
+      
       if (!token) {
         return res.status(400).json({ message: 'No active session' });
       }
 
       const supabase = createClient(supabaseUrl, supabaseKey);
-
+      
       // Sign out the user from Supabase
-      const { error } = await supabase.auth.signOut({
-        jwt: token,
+      const { error } = await supabase.auth.signOut({ 
+        jwt: token 
       });
 
       if (error) {
-        return res.status(500).json({
+        return res.status(500).json({ 
           message: 'Error signing out',
-          error: error.message,
+          error: error.message
         });
       }
 
@@ -160,20 +149,20 @@ const authController = {
     try {
       const userId = req.user.userId;
       const roleData = await userModel.getUserRoleAndPermissions(userId);
-
+      
       if (!roleData) {
         return res.status(404).json({ message: 'User role data not found' });
       }
 
       res.json({
         role: roleData.role,
-        permissions: roleData.permissions || [],
+        permissions: roleData.permissions || []
       });
     } catch (error) {
       console.error('Get permissions error:', error);
       res.status(500).json({ message: 'Failed to get user permissions' });
     }
-  },
+  }
 };
 
 module.exports = authController;

@@ -1,3 +1,7 @@
+/**
+ * Middleware for authentication with Supabase
+ * This handles JWT validation and user verification
+ */
 const { supabaseUrl, supabaseKey } = require('../config/supabase');
 const { createClient } = require('@supabase/supabase-js');
 const db = require('../config/db');
@@ -13,12 +17,9 @@ const authSupabaseMiddleware = async (req, res, next) => {
 
     // Create a Supabase client with the token
     const supabase = createClient(supabaseUrl, supabaseKey);
-
+    
     // Verify the token with Supabase
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser(token);
+    const { data: { user }, error } = await supabase.auth.getUser(token);
 
     if (error || !user) {
       return res.status(401).json({ message: 'Invalid or expired token' });
@@ -30,14 +31,13 @@ const authSupabaseMiddleware = async (req, res, next) => {
       FROM users 
       WHERE auth_id = $1
     `;
-
+    
     const result = await db.query(query, [user.id]);
     const dbUser = result.rows[0];
 
     if (!dbUser) {
-      return res.status(404).json({
-        message:
-          'User account not found. Auth verified but user mapping missing.',
+      return res.status(404).json({ 
+        message: 'User account not found. Auth verified but user mapping missing.' 
       });
     }
 
@@ -47,7 +47,7 @@ const authSupabaseMiddleware = async (req, res, next) => {
       email: dbUser.email,
       role: dbUser.role,
       subscriptionType: dbUser.subscription_type,
-      authId: user.id,
+      authId: user.id
     };
 
     next();
