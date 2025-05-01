@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const subtopicController = require('../controllers/subtopicController');
-const authMiddleware = require('../middleware/auth');
 
 /**
  * @swagger
@@ -46,7 +45,12 @@ const authMiddleware = require('../middleware/auth');
  *       404:
  *         description: Topic not found
  */
-router.post('/', authMiddleware, subtopicController.create);
+router.post(
+  '/',
+  authSupabase,
+  authorizePermission('manage_subtopics'),
+  subtopicController.create,
+);
 
 /**
  * @swagger
@@ -125,7 +129,12 @@ router.get('/:id', subtopicController.getById);
  *       404:
  *         description: Subtopic not found
  */
-router.put('/:id', authMiddleware, subtopicController.update);
+router.put(
+  '/:id',
+  authSupabase,
+  authorizePermission('manage_subtopics'),
+  subtopicController.update,
+);
 
 /**
  * @swagger
@@ -150,6 +159,11 @@ router.put('/:id', authMiddleware, subtopicController.update);
  *       404:
  *         description: Subtopic not found
  */
-router.delete('/:id', authMiddleware, subtopicController.delete);
+router.delete(
+  '/:id',
+  authSupabase,
+  authorizePermission('manage_subtopics'),
+  subtopicController.delete,
+);
 
 module.exports = router;

@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const questionController = require('../controllers/questionController');
-const authMiddleware = require('../middleware/auth');
 
 /**
  * @swagger
@@ -47,7 +46,12 @@ const authMiddleware = require('../middleware/auth');
  *       404:
  *         description: Test not found
  */
-router.post('/', authMiddleware, questionController.create);
+router.post(
+  '/',
+  authSupabase,
+  authorizePermission('manage_questions'),
+  questionController.create,
+);
 
 /**
  * @swagger
@@ -126,7 +130,12 @@ router.get('/:id', questionController.getById);
  *       404:
  *         description: Question not found
  */
-router.put('/:id', authMiddleware, questionController.update);
+router.put(
+  '/:id',
+  authSupabase,
+  authorizePermission('manage_questions'),
+  questionController.update,
+);
 
 /**
  * @swagger
@@ -151,6 +160,11 @@ router.put('/:id', authMiddleware, questionController.update);
  *       404:
  *         description: Question not found
  */
-router.delete('/:id', authMiddleware, questionController.delete);
+router.delete(
+  '/:id',
+  authSupabase,
+  authorizePermission('manage_questions'),
+  questionController.delete,
+);
 
 module.exports = router;

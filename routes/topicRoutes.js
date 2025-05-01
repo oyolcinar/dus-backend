@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const topicController = require('../controllers/topicController');
-const authMiddleware = require('../middleware/auth');
 
 /**
  * @swagger
@@ -46,7 +45,12 @@ const authMiddleware = require('../middleware/auth');
  *       404:
  *         description: Course not found
  */
-router.post('/', authMiddleware, topicController.create);
+router.post(
+  '/',
+  authSupabase,
+  authorizePermission('manage_topics'),
+  topicController.create,
+);
 
 /**
  * @swagger
@@ -125,7 +129,12 @@ router.get('/:id', topicController.getById);
  *       404:
  *         description: Topic not found
  */
-router.put('/:id', authMiddleware, topicController.update);
+router.put(
+  '/:id',
+  authSupabase,
+  authorizePermission('manage_topics'),
+  topicController.update,
+);
 
 /**
  * @swagger
@@ -150,6 +159,11 @@ router.put('/:id', authMiddleware, topicController.update);
  *       404:
  *         description: Topic not found
  */
-router.delete('/:id', authMiddleware, topicController.delete);
+router.delete(
+  '/:id',
+  authSupabase,
+  authorizePermission('manage_topics'),
+  topicController.delete,
+);
 
 module.exports = router;

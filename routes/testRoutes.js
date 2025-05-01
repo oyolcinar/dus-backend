@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const testController = require('../controllers/testController');
-const authMiddleware = require('../middleware/auth');
 
 /**
  * @swagger
@@ -44,7 +43,12 @@ const authMiddleware = require('../middleware/auth');
  *       401:
  *         description: Unauthorized
  */
-router.post('/', authMiddleware, testController.create);
+router.post(
+  '/',
+  authSupabase,
+  authorizePermission('manage_tests'),
+  testController.create,
+);
 
 /**
  * @swagger
@@ -136,7 +140,12 @@ router.get('/:id', testController.getById);
  *       404:
  *         description: Test not found
  */
-router.put('/:id', authMiddleware, testController.update);
+router.put(
+  '/:id',
+  authSupabase,
+  authorizePermission('manage_tests'),
+  testController.update,
+);
 
 /**
  * @swagger
@@ -161,6 +170,11 @@ router.put('/:id', authMiddleware, testController.update);
  *       404:
  *         description: Test not found
  */
-router.delete('/:id', authMiddleware, testController.delete);
+router.delete(
+  '/:id',
+  authSupabase,
+  authorizePermission('manage_tests'),
+  testController.delete,
+);
 
 module.exports = router;
