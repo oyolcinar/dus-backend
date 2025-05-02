@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const testController = require('../controllers/testController');
 const authSupabase = require('../middleware/authSupabase');
+const { authorize, authorizePermission } = require('../middleware/authorize');
 
 /**
  * @swagger

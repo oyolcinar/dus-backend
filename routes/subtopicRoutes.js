@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const subtopicController = require('../controllers/subtopicController');
 const authSupabase = require('../middleware/authSupabase');
+const { authorize, authorizePermission } = require('../middleware/authorize');
 
 /**
  * @swagger
