@@ -64,7 +64,7 @@ const { authorize, authorizePermission } = require('../middleware/authorize');
  *       404:
  *         description: Test not found
  */
-router.post('/submit', authMiddleware, resultController.submitTest);
+router.post('/submit', authSupabase, resultController.submitTest);
 
 /**
  * @swagger
@@ -80,7 +80,7 @@ router.post('/submit', authMiddleware, resultController.submitTest);
  *       401:
  *         description: Unauthorized
  */
-router.get('/user', authMiddleware, resultController.getUserResults);
+router.get('/user', authSupabase, resultController.getUserResults);
 
 /**
  * @swagger
@@ -107,7 +107,7 @@ router.get('/user', authMiddleware, resultController.getUserResults);
  *       404:
  *         description: Result not found
  */
-router.get('/:id', authMiddleware, resultController.getResultDetails);
+router.get('/:id', authSupabase, resultController.getResultDetails);
 
 /**
  * @swagger
