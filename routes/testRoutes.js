@@ -37,6 +37,11 @@ const { authorize, authorizePermission } = require('../middleware/authorize');
  *                 type: integer
  *                 minimum: 1
  *                 maximum: 5
+ *               timeLimit:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 180
+ *                 description: Time limit in minutes (default 30)
  *     responses:
  *       201:
  *         description: Test created successfully
@@ -76,6 +81,10 @@ router.post(
  *                     type: string
  *                   difficulty_level:
  *                     type: integer
+ *                   question_count:
+ *                     type: integer
+ *                   time_limit:
+ *                     type: integer
  *                   created_at:
  *                     type: string
  *                     format: date-time
@@ -102,6 +111,27 @@ router.get('/', testController.getAll);
  *         description: Test not found
  */
 router.get('/:id', testController.getById);
+
+/**
+ * @swagger
+ * /api/tests/{id}/with-questions:
+ *   get:
+ *     summary: Get test by ID with all its questions
+ *     tags: [Tests]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Test ID
+ *     responses:
+ *       200:
+ *         description: Test details with questions
+ *       404:
+ *         description: Test not found
+ */
+router.get('/:id/with-questions', testController.getWithQuestions);
 
 /**
  * @swagger
@@ -132,6 +162,11 @@ router.get('/:id', testController.getById);
  *                 type: integer
  *                 minimum: 1
  *                 maximum: 5
+ *               timeLimit:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 180
+ *                 description: Time limit in minutes
  *     responses:
  *       200:
  *         description: Test updated successfully

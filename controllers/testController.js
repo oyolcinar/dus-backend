@@ -10,7 +10,7 @@ const testController = {
   // Create a new test
   async create(req, res) {
     try {
-      const { title, description, difficultyLevel } = req.body;
+      const { title, description, difficultyLevel, timeLimit } = req.body;
 
       // Validate input
       if (!title || !difficultyLevel) {
@@ -26,6 +26,13 @@ const testController = {
           .json({ message: 'Difficulty level must be between 1 and 5' });
       }
 
+      // Validate time limit if provided
+      if (timeLimit !== undefined && (timeLimit < 1 || timeLimit > 180)) {
+        return res
+          .status(400)
+          .json({ message: 'Time limit must be between 1 and 180 minutes' });
+      }
+
       // Check if user has admin permissions
       if (req.user.role !== 'admin') {
         return res
@@ -33,11 +40,12 @@ const testController = {
           .json({ message: 'Only administrators can create tests' });
       }
 
-      // Create test
+      // Create test with new time limit parameter
       const newTest = await testModel.create(
         title,
         description || null,
         difficultyLevel,
+        timeLimit || 30, // Default to 30 minutes if not provided
       );
 
       res.status(201).json({
@@ -78,11 +86,30 @@ const testController = {
     }
   },
 
+  // Get test with questions
+  async getWithQuestions(req, res) {
+    try {
+      const testId = req.params.id;
+
+      const testWithQuestions = await testModel.getWithQuestions(testId);
+      if (!testWithQuestions) {
+        return res.status(404).json({ message: 'Test not found' });
+      }
+
+      res.json(testWithQuestions);
+    } catch (error) {
+      console.error('Get test with questions error:', error);
+      res
+        .status(500)
+        .json({ message: 'Failed to retrieve test with questions' });
+    }
+  },
+
   // Update test
   async update(req, res) {
     try {
       const testId = req.params.id;
-      const { title, description, difficultyLevel } = req.body;
+      const { title, description, difficultyLevel, timeLimit } = req.body;
 
       // Check if test exists
       const existingTest = await testModel.getById(testId);
@@ -107,12 +134,20 @@ const testController = {
           .json({ message: 'Difficulty level must be between 1 and 5' });
       }
 
+      // Validate time limit if provided
+      if (timeLimit !== undefined && (timeLimit < 1 || timeLimit > 180)) {
+        return res
+          .status(400)
+          .json({ message: 'Time limit must be between 1 and 180 minutes' });
+      }
+
       // Update test
       const updatedTest = await testModel.update(
         testId,
         title || existingTest.title,
         description !== undefined ? description : existingTest.description,
         difficultyLevel || existingTest.difficulty_level,
+        timeLimit !== undefined ? timeLimit : existingTest.time_limit,
       );
 
       res.json({

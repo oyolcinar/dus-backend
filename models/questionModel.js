@@ -1,6 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
 const supabaseConfig = require('../config/supabase');
-
 // Initialize Supabase client
 const supabase = createClient(
   supabaseConfig.supabaseUrl,
@@ -11,6 +10,8 @@ const questionModel = {
   // Create a new question
   async create(testId, questionText, options, correctAnswer) {
     try {
+      // Start a transaction by using a single batch operation
+      // First insert the question
       const { data, error } = await supabase
         .from('test_questions')
         .insert({
@@ -25,6 +26,10 @@ const questionModel = {
         .single();
 
       if (error) throw error;
+
+      // Note: We don't need to manually update the question_count anymore
+      // The database trigger we created will handle this automatically
+
       return data;
     } catch (error) {
       console.error('Error creating question:', error);
@@ -42,7 +47,6 @@ const questionModel = {
         )
         .eq('test_id', testId)
         .order('question_id', { ascending: true });
-
       if (error) throw error;
       return data;
     } catch (error) {
@@ -61,14 +65,12 @@ const questionModel = {
         )
         .eq('question_id', questionId)
         .single();
-
       if (error) {
         if (error.code === 'PGRST116') {
           return null; // No question found
         }
         throw error;
       }
-
       return data;
     } catch (error) {
       console.error('Error getting question by ID:', error);
@@ -91,7 +93,6 @@ const questionModel = {
           'question_id, test_id, question_text, options, correct_answer, created_at',
         )
         .single();
-
       if (error) throw error;
       return data;
     } catch (error) {
@@ -107,10 +108,14 @@ const questionModel = {
         .from('test_questions')
         .delete()
         .eq('question_id', questionId)
-        .select('question_id')
+        .select('question_id, test_id') // Include test_id to know which test's count to decrement
         .single();
 
       if (error) throw error;
+
+      // Note: We don't need to manually update the question_count anymore
+      // The database trigger we created will handle this automatically
+
       return data;
     } catch (error) {
       console.error('Error deleting question:', error);
