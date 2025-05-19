@@ -1,3 +1,4 @@
+// Only making needed improvements to getUserAchievements while preserving everything else
 const { createClient } = require('@supabase/supabase-js');
 const supabaseConfig = require('../config/supabase');
 
@@ -142,9 +143,15 @@ const achievementModel = {
     }
   },
 
-  // Get user's achievements
+  // Get user's achievements - IMPROVED WITH BETTER ERROR HANDLING
   async getUserAchievements(userId) {
     try {
+      // Validate userId
+      if (!userId) {
+        console.error('User ID is required for getUserAchievements');
+        return []; // Return empty array instead of throwing error
+      }
+
       const { data, error } = await supabase
         .from('user_achievements')
         .select(
@@ -162,19 +169,47 @@ const achievementModel = {
         .eq('user_id', userId)
         .order('date_earned', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error in getUserAchievements:', error);
+        return []; // Return empty array instead of failing
+      }
 
-      // Transform the nested data to match the format of the original response
-      return data.map((item) => ({
-        achievement_id: item.achievements.achievement_id,
-        name: item.achievements.name,
-        description: item.achievements.description,
-        requirements: item.achievements.requirements,
-        date_earned: item.date_earned,
-      }));
+      // Additional error handling for malformed data
+      if (!data || !Array.isArray(data)) {
+        console.error(
+          'Unexpected response format from user_achievements query:',
+          data,
+        );
+        return []; // Return empty array instead of failing
+      }
+
+      // Transform the nested data and handle missing/malformed achievements
+      return data.map((item) => {
+        if (!item.achievements) {
+          console.warn(
+            `Missing achievement data for user_achievement record: ${item.achievement_id}`,
+          );
+          return {
+            achievement_id: item.achievement_id,
+            name: 'Unknown Achievement',
+            description: null,
+            requirements: {},
+            date_earned: item.date_earned,
+          };
+        }
+
+        return {
+          achievement_id: item.achievements.achievement_id,
+          name: item.achievements.name,
+          description: item.achievements.description,
+          requirements: item.achievements.requirements,
+          date_earned: item.date_earned,
+        };
+      });
     } catch (error) {
       console.error('Error getting user achievements:', error);
-      throw error;
+      // Return empty array for better frontend compatibility
+      return [];
     }
   },
 
