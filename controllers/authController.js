@@ -7,45 +7,60 @@ const userModel = require('../models/userModel');
 const { supabaseUrl, supabaseKey } = require('../config/supabase');
 
 const authController = {
-  // Smart URL detection for different build types
+  // Smart URL detection for different build types - FIXED VERSION
   getFrontendUrl(req, isPasswordReset = false) {
     // Check for custom header from mobile app
     const buildType = req.headers['x-build-type']; // 'expo-go' or 'eas-build'
     const customScheme = req.headers['x-app-scheme']; // Custom scheme from app
 
-    // If app sends custom scheme, use it
+    // Enhanced logging for debugging
+    console.log('getFrontendUrl DEBUG:', {
+      buildType,
+      customScheme,
+      isPasswordReset,
+      'User-Agent': req.headers['user-agent'],
+      FRONTEND_URL_EXPO_GO: process.env.FRONTEND_URL_EXPO_GO,
+      FRONTEND_URL_EAS_BUILD: process.env.FRONTEND_URL_EAS_BUILD,
+      FRONTEND_URL_DEFAULT: process.env.FRONTEND_URL_DEFAULT,
+    });
+
+    // If app sends custom scheme, use it (this is the preferred method)
     if (customScheme) {
       const suffix = isPasswordReset ? '/reset-password' : '';
-      return `${customScheme}${suffix}`;
+      const finalUrl = `${customScheme}${suffix}`;
+      console.log(`Using custom scheme: ${finalUrl}`);
+      return finalUrl;
     }
 
     // Based on build type header
     if (buildType === 'expo-go') {
-      return isPasswordReset
+      const url = isPasswordReset
         ? process.env.PASSWORD_RESET_REDIRECT_URL_EXPO_GO
         : process.env.FRONTEND_URL_EXPO_GO;
+      console.log(`Using Expo Go URL: ${url}`);
+      return url;
     }
 
     if (buildType === 'eas-build') {
-      return isPasswordReset
+      const url = isPasswordReset
         ? process.env.PASSWORD_RESET_REDIRECT_URL_EAS_BUILD
         : process.env.FRONTEND_URL_EAS_BUILD;
+      console.log(`Using EAS build URL: ${url}`);
+      return url;
     }
 
-    // Default to EAS build URLs (production)
+    // Default to EAS build URLs (production) - FIXED DEFAULT VALUES
     const defaultUrl = isPasswordReset
       ? process.env.PASSWORD_RESET_REDIRECT_URL_DEFAULT ||
-        'com.dusapptr.dusapp://reset-password'
-      : process.env.FRONTEND_URL_DEFAULT || 'com.dusapptr.dusapp://';
+        'dus-app://reset-password' // Fixed: was using wrong scheme
+      : process.env.FRONTEND_URL_DEFAULT || 'dus-app://'; // Fixed: was using wrong scheme
 
     // Log the redirect URL for debugging
-    if (process.env.LOG_OAUTH_REDIRECTS === 'true') {
-      console.log(
-        `OAuth redirect URL: ${defaultUrl} (build-type: ${
-          buildType || 'default'
-        })`,
-      );
-    }
+    console.log(
+      `OAuth redirect URL (default): ${defaultUrl} (build-type: ${
+        buildType || 'default'
+      })`,
+    );
 
     return defaultUrl;
   },
@@ -144,8 +159,19 @@ const authController = {
         `User registered successfully: ${email} (ID: ${newUser.user_id})`,
       );
 
-      // Get the session that was created during signup
-      const { data: sessionData } = await supabase.auth.getSession();
+      // FIXED: Create a proper session for the new user
+      const { data: sessionData, error: sessionError } =
+        await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+      if (sessionError) {
+        console.warn(
+          'Failed to create session after registration:',
+          sessionError,
+        );
+      }
 
       res.status(201).json({
         message: 'User registered successfully',
@@ -276,10 +302,16 @@ const authController = {
     }
   },
 
-  // OAuth callback handler
+  // OAuth callback handler - FIXED VERSION
   async oauthCallback(req, res) {
     try {
       const { code, state, provider, error, error_description } = req.query;
+
+      console.log('OAuth callback received:', {
+        provider,
+        error,
+        hasCode: !!code,
+      });
 
       // Handle OAuth errors
       if (error) {
@@ -288,16 +320,18 @@ const authController = {
           error,
           error_description,
         );
-        const redirectUrl = `${this.getFrontendUrl(
+        const redirectUrl = `${authController.getFrontendUrl(
           req,
         )}/auth/error?error=${encodeURIComponent(error_description || error)}`;
+        console.log(`Redirecting to error URL: ${redirectUrl}`);
         return res.redirect(redirectUrl);
       }
 
       if (!code) {
-        const redirectUrl = `${this.getFrontendUrl(
+        const redirectUrl = `${authController.getFrontendUrl(
           req,
         )}/auth/error?error=authorization_required`;
+        console.log(`Redirecting to error URL (no code): ${redirectUrl}`);
         return res.redirect(redirectUrl);
       }
 
@@ -309,9 +343,10 @@ const authController = {
 
       if (authError) {
         console.error('OAuth callback error:', authError);
-        const redirectUrl = `${this.getFrontendUrl(
+        const redirectUrl = `${authController.getFrontendUrl(
           req,
         )}/auth/error?error=${encodeURIComponent(authError.message)}`;
+        console.log(`Redirecting to error URL (auth error): ${redirectUrl}`);
         return res.redirect(redirectUrl);
       }
 
@@ -322,7 +357,10 @@ const authController = {
 
       if (!user) {
         // Handle different OAuth providers
-        const userData = this.extractUserDataFromProvider(authUser, provider);
+        const userData = authController.extractUserDataFromProvider(
+          authUser,
+          provider,
+        );
         user = await userModel.createOAuthUser(
           userData.username,
           userData.email,
@@ -332,6 +370,11 @@ const authController = {
 
         console.log(`OAuth user created: ${userData.email} via ${provider}`);
       }
+
+      // Get user permissions
+      const userRoleData = await userModel.getUserRoleAndPermissions(
+        user.user_id,
+      );
 
       // Create session token for frontend
       const sessionToken = Buffer.from(
@@ -345,12 +388,13 @@ const authController = {
             email: user.email,
             role: user.role,
             subscriptionType: user.subscription_type,
+            permissions: userRoleData?.permissions || [],
           },
         }),
       ).toString('base64');
 
-      // Smart redirect URL detection
-      const redirectUrl = `${this.getFrontendUrl(
+      // Smart redirect URL detection - FIXED: Use proper function call
+      const redirectUrl = `${authController.getFrontendUrl(
         req,
       )}/auth/success?token=${sessionToken}`;
 
@@ -358,9 +402,10 @@ const authController = {
       res.redirect(redirectUrl);
     } catch (error) {
       console.error('OAuth callback error:', error);
-      const redirectUrl = `${this.getFrontendUrl(
+      const redirectUrl = `${authController.getFrontendUrl(
         req,
       )}/auth/error?error=oauth_failed`;
+      console.log(`Redirecting to error URL (catch): ${redirectUrl}`);
       res.redirect(redirectUrl);
     }
   },
@@ -540,7 +585,9 @@ const authController = {
 
       // Log successful sign out
       console.log(
-        `User ${req.user.email} (ID: ${req.user.userId}) signed out successfully`,
+        `User ${req.user?.email || 'unknown'} (ID: ${
+          req.user?.userId || 'unknown'
+        }) signed out successfully`,
       );
 
       res.json({ message: 'Successfully signed out' });
@@ -574,7 +621,7 @@ const authController = {
     }
   },
 
-  // Password reset request
+  // Password reset request - FIXED: Use proper function reference
   async requestPasswordReset(req, res) {
     try {
       const { email } = req.body;
@@ -588,7 +635,7 @@ const authController = {
 
       // Send password reset email through Supabase
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: this.getFrontendUrl(req, true), // true for password reset
+        redirectTo: authController.getFrontendUrl(req, true), // true for password reset
       });
 
       if (error) {
@@ -664,7 +711,11 @@ const authController = {
       }
 
       // Log the password update (without revealing the user for security)
-      console.log(`Password updated successfully for user ${req.user.userId}`);
+      console.log(
+        `Password updated successfully for user ${
+          req.user?.userId || 'unknown'
+        }`,
+      );
 
       res.json({ message: 'Password updated successfully' });
     } catch (error) {
