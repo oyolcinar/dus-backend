@@ -410,7 +410,7 @@ const authController = {
     }
   },
 
-  // Start OAuth flow
+  // Start OAuth flow - UPDATED FOR DIRECT MOBILE REDIRECT
   async startOAuth(req, res) {
     try {
       const { provider } = req.params;
@@ -421,12 +421,15 @@ const authController = {
 
       const supabase = createClient(supabaseUrl, supabaseKey);
 
+      // CHANGED: Use mobile app scheme directly instead of backend callback
+      const mobileRedirectUrl = 'dus-app://';
+
+      console.log(`OAuth ${provider} - Redirect URL:`, mobileRedirectUrl);
+
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${req.protocol}://${req.get(
-            'host',
-          )}/api/auth/oauth/callback?provider=${provider}`,
+          redirectTo: mobileRedirectUrl, // CHANGED: Direct to mobile app
           scopes: provider === 'google' ? 'email profile' : undefined,
         },
       });
@@ -438,6 +441,8 @@ const authController = {
           error: error.message,
         });
       }
+
+      console.log(`${provider} OAuth URL generated:`, data.url);
 
       res.json({
         message: `${provider} OAuth started`,
