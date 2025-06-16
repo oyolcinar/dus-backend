@@ -303,7 +303,6 @@ const duelModel = {
 
       if (error) throw error;
 
-      // Transform the response to match the original format
       return data.map((duel) => ({
         duel_id: duel.duel_id,
         initiator_id: duel.initiator_id,
@@ -323,6 +322,89 @@ const duelModel = {
       }));
     } catch (error) {
       console.error('Error getting duels by branch ID:', error);
+      throw error;
+    }
+  },
+
+  // --- NEW FUNCTIONS ADDED HERE ---
+
+  /**
+   * Get the duel leaderboard from the users table.
+   * @param {number} limit - The number of users to return.
+   * @param {number} offset - The starting position for pagination.
+   * @returns {Promise<{users: Array, total: number}>}
+   */
+  async getLeaderboard(limit = 10, offset = 0) {
+    try {
+      // Your `users` table uses `user_id` as the primary key. Let's use that.
+      const { data, error, count } = await supabase
+        .from('users')
+        .select('user_id, username, duels_won, duels_lost', { count: 'exact' })
+        .order('duels_won', { ascending: false })
+        .range(offset, offset + limit - 1);
+
+      if (error) throw error;
+
+      // Calculate win rate and map to the format the frontend expects
+      const leaderboardUsers = data.map((user) => ({
+        userId: user.user_id,
+        username: user.username,
+        wins: user.duels_won || 0,
+        losses: user.duels_lost || 0,
+        totalDuels: (user.duels_won || 0) + (user.duels_lost || 0),
+        winRate:
+          (user.duels_won || 0) /
+          ((user.duels_won || 0) + (user.duels_lost || 0) || 1),
+      }));
+
+      return { users: leaderboardUsers, total: count };
+    } catch (error) {
+      console.error('Error getting leaderboard:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get recommended opponents for a user.
+   * @param {number} userId - The ID of the user requesting recommendations.
+   * @param {number} limit - The number of recommendations to return.
+   * @returns {Promise<Array>}
+   */
+  async getRecommendedOpponents(userId, limit = 5) {
+    try {
+      // 1. Get IDs of the current user's friends to exclude them.
+      const { data: friends } = await supabase
+        .from('user_friends')
+        .select('friend_id')
+        .eq('user_id', userId)
+        .eq('status', 'accepted');
+
+      const friendIds = friends ? friends.map((f) => f.friend_id) : [];
+
+      // 2. Find users who are NOT the current user and NOT in the friends list.
+      const usersToExclude = [userId, ...friendIds];
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('user_id, username, duels_won, duels_lost')
+        .not('user_id', 'in', `(${usersToExclude.join(',')})`)
+        .limit(limit);
+
+      if (error) throw error;
+
+      // 3. Map the data to the format expected by the frontend service.
+      return data.map((user) => ({
+        userId: user.user_id,
+        username: user.username,
+        skillLevel: user.duels_won || 0,
+        winRate:
+          (user.duels_won || 0) /
+          ((user.duels_won || 0) + (user.duels_lost || 0) || 1),
+        totalDuels: (user.duels_won || 0) + (user.duels_lost || 0),
+        compatibility: Math.random(),
+      }));
+    } catch (error) {
+      console.error('Error getting recommended opponents:', error);
       throw error;
     }
   },

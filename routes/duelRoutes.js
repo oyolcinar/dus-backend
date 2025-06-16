@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const duelController = require('../controllers/duelController');
-// Replace the old auth middleware with the new one
 const authSupabase = require('../middleware/authSupabase');
 
 /**
@@ -10,6 +9,56 @@ const authSupabase = require('../middleware/authSupabase');
  *   name: Duels
  *   description: Duel management
  */
+
+// --- NEW ROUTES ADDED HERE ---
+
+/**
+ * @swagger
+ * /api/duels/leaderboard:
+ *   get:
+ *     summary: Get the duel leaderboard
+ *     tags: [Duels]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 10 }
+ *         description: The number of users to return.
+ *       - in: query
+ *         name: offset
+ *         schema: { type: integer, default: 0 }
+ *         description: The starting position for pagination.
+ *     responses:
+ *       200:
+ *         description: The duel leaderboard
+ */
+router.get('/leaderboard', authSupabase, duelController.getLeaderboard);
+
+/**
+ * @swagger
+ * /api/duels/recommended-opponents:
+ *   get:
+ *     summary: Get recommended opponents for the current user
+ *     tags: [Duels]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 5 }
+ *         description: The number of recommendations to return.
+ *     responses:
+ *       200:
+ *         description: A list of recommended opponents
+ */
+router.get(
+  '/recommended-opponents',
+  authSupabase,
+  duelController.getRecommendedOpponents,
+);
+
+// --- EXISTING ROUTES ---
 
 /**
  * @swagger
