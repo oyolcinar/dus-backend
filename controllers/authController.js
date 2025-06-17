@@ -422,7 +422,7 @@ const authController = {
       const supabase = createClient(supabaseUrl, supabaseKey);
 
       // CHANGED: Use mobile app scheme directly instead of backend callback
-      const mobileRedirectUrl = 'dus-app://';
+      const mobileRedirectUrl = authController.getFrontendUrl(req);
 
       console.log(`OAuth ${provider} - Redirect URL:`, mobileRedirectUrl);
 
