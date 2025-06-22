@@ -302,36 +302,22 @@ const authController = {
     }
   },
 
-  // OAuth callback handler - FIXED VERSION
+  // In authController.js - oauthCallback function
   async oauthCallback(req, res) {
     try {
-      const { code, state, provider, error, error_description } = req.query;
+      const { code, error, error_description } = req.query;
 
-      console.log('OAuth callback received:', {
-        provider,
-        error,
-        hasCode: !!code,
-      });
-
-      // Handle OAuth errors
       if (error) {
-        console.error(
-          `OAuth error from ${provider}:`,
-          error,
-          error_description,
-        );
         const redirectUrl = `${authController.getFrontendUrl(
           req,
-        )}/auth/error?error=${encodeURIComponent(error_description || error)}`;
-        console.log(`Redirecting to error URL: ${redirectUrl}`);
+        )}#error=${encodeURIComponent(error_description || error)}`;
         return res.redirect(redirectUrl);
       }
 
       if (!code) {
         const redirectUrl = `${authController.getFrontendUrl(
           req,
-        )}/auth/error?error=authorization_required`;
-        console.log(`Redirecting to error URL (no code): ${redirectUrl}`);
+        )}#error=authorization_required`;
         return res.redirect(redirectUrl);
       }
 
@@ -342,21 +328,20 @@ const authController = {
         await supabase.auth.exchangeCodeForSession(code);
 
       if (authError) {
-        console.error('OAuth callback error:', authError);
         const redirectUrl = `${authController.getFrontendUrl(
           req,
-        )}/auth/error?error=${encodeURIComponent(authError.message)}`;
-        console.log(`Redirecting to error URL (auth error): ${redirectUrl}`);
+        )}#error=${encodeURIComponent(authError.message)}`;
         return res.redirect(redirectUrl);
       }
 
       const { user: authUser, session } = data;
 
-      // Check if user exists in our database
+      // Check if user exists in database
       let user = await userModel.findByAuthId(authUser.id);
 
       if (!user) {
-        // Handle different OAuth providers
+        // Create new OAuth user
+        const provider = authUser.app_metadata?.provider || 'oauth';
         const userData = authController.extractUserDataFromProvider(
           authUser,
           provider,
@@ -367,36 +352,12 @@ const authController = {
           authUser.id,
           provider,
         );
-
-        console.log(`OAuth user created: ${userData.email} via ${provider}`);
       }
 
-      // Get user permissions
-      const userRoleData = await userModel.getUserRoleAndPermissions(
-        user.user_id,
-      );
-
-      // Create session token for frontend
-      const sessionToken = Buffer.from(
-        JSON.stringify({
-          access_token: session.access_token,
-          refresh_token: session.refresh_token,
-          user_id: user.user_id,
-          user: {
-            userId: user.user_id,
-            username: user.username,
-            email: user.email,
-            role: user.role,
-            subscriptionType: user.subscription_type,
-            permissions: userRoleData?.permissions || [],
-          },
-        }),
-      ).toString('base64');
-
-      // Smart redirect URL detection - FIXED: Use proper function call
-      const redirectUrl = `${authController.getFrontendUrl(
-        req,
-      )}/auth/success?token=${sessionToken}`;
+      // FIXED: Redirect to mobile app with tokens in URL fragment
+      const redirectUrl = `${authController.getFrontendUrl(req)}#access_token=${
+        session.access_token
+      }&refresh_token=${session.refresh_token}`;
 
       console.log(`OAuth success redirect: ${redirectUrl}`);
       res.redirect(redirectUrl);
@@ -404,13 +365,13 @@ const authController = {
       console.error('OAuth callback error:', error);
       const redirectUrl = `${authController.getFrontendUrl(
         req,
-      )}/auth/error?error=oauth_failed`;
-      console.log(`Redirecting to error URL (catch): ${redirectUrl}`);
+      )}#error=oauth_failed`;
       res.redirect(redirectUrl);
     }
   },
 
   // Start OAuth flow - UPDATED FOR DIRECT MOBILE REDIRECT
+  // In authController.js - startOAuth function
   async startOAuth(req, res) {
     try {
       const { provider } = req.params;
@@ -421,15 +382,20 @@ const authController = {
 
       const supabase = createClient(supabaseUrl, supabaseKey);
 
-      // CHANGED: Use mobile app scheme directly instead of backend callback
-      const mobileRedirectUrl = authController.getFrontendUrl(req);
+      // FIXED: Use backend callback URL first, then redirect to mobile
+      const backendCallbackUrl = `${req.protocol}://${req.get(
+        'host',
+      )}/api/auth/oauth/callback`;
 
-      console.log(`OAuth ${provider} - Redirect URL:`, mobileRedirectUrl);
+      console.log(
+        `OAuth ${provider} - Backend callback URL:`,
+        backendCallbackUrl,
+      );
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: mobileRedirectUrl, // CHANGED: Direct to mobile app
+          redirectTo: backendCallbackUrl, // Backend handles callback first
           scopes: provider === 'google' ? 'email profile' : undefined,
         },
       });
@@ -441,8 +407,6 @@ const authController = {
           error: error.message,
         });
       }
-
-      console.log(`${provider} OAuth URL generated:`, data.url);
 
       res.json({
         message: `${provider} OAuth started`,
