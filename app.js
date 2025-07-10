@@ -84,6 +84,7 @@ const duelResultRoutes = require('./routes/duelResultRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const authRoutes = require('./routes/authRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -104,6 +105,16 @@ app.use('/api/friends', friendRoutes);
 app.use('/api/answers', answerRoutes);
 app.use('/api/duel-results', duelResultRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/notifications', notificationRoutes);
+
+const notificationCronJobs = require('./services/notificationCronJobs');
+
+// Initialize cron jobs if enabled
+if (process.env.ENABLE_CRON_JOBS === 'true') {
+  notificationCronJobs.init();
+  notificationCronJobs.startAll();
+  console.log('Notification cron jobs started');
+}
 
 // Error handling middleware
 app.use((err, req, res, next) => {

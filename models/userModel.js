@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const bcrypt = require('bcrypt');
+const notificationService = require('../services/notificationService');
 
 const userModel = {
   // Create a new user
@@ -14,6 +15,10 @@ const userModel = {
 
     const values = [username, email, hashedPassword];
     const result = await db.query(query, values);
+
+    if (result.rows[0]) {
+      await this.initializeNotificationPreferences(result.rows[0].user_id);
+    }
 
     return result.rows[0];
   },
@@ -366,6 +371,14 @@ const userModel = {
       return result.rows;
     } catch (error) {
       console.error('Error getting OAuth stats:', error);
+      throw error;
+    }
+  },
+  async initializeNotificationPreferences(userId) {
+    try {
+      return await notificationService.initializeDefaultPreferences(userId);
+    } catch (error) {
+      console.error('Error initializing notification preferences:', error);
       throw error;
     }
   },

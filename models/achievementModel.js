@@ -1,6 +1,7 @@
 // Only making needed improvements to getUserAchievements while preserving everything else
 const { createClient } = require('@supabase/supabase-js');
 const supabaseConfig = require('../config/supabase');
+const notificationService = require('../services/notificationService');
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -226,6 +227,33 @@ const achievementModel = {
       return data.length > 0;
     } catch (error) {
       console.error('Error checking if user has achievement:', error);
+      throw error;
+    }
+  },
+  async awardToUserWithNotification(userId, achievementId) {
+    try {
+      // Use existing award function
+      const userAchievement = await this.awardToUser(userId, achievementId);
+
+      // Get achievement details for notification
+      const achievement = await this.getById(achievementId);
+
+      if (achievement) {
+        // Send achievement notification
+        await notificationService.sendNotification(
+          userId,
+          'achievement_unlock',
+          'achievement_unlock',
+          {
+            achievement_name: achievement.name,
+            achievement_id: achievementId,
+          },
+        );
+      }
+
+      return userAchievement;
+    } catch (error) {
+      console.error('Error awarding achievement with notification:', error);
       throw error;
     }
   },

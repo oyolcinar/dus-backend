@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const supabaseConfig = require('../config/supabase');
+const notificationService = require('../services/notificationService');
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -405,6 +406,123 @@ const duelModel = {
       }));
     } catch (error) {
       console.error('Error getting recommended opponents:', error);
+      throw error;
+    }
+  },
+  async createWithNotification(
+    initiatorId,
+    opponentId,
+    testId,
+    questionCount = 3,
+    branchType = 'mixed',
+    selectionType = 'random',
+    branchId = null,
+  ) {
+    try {
+      // Use existing create function
+      const duel = await this.create(
+        initiatorId,
+        opponentId,
+        testId,
+        questionCount,
+        branchType,
+        selectionType,
+        branchId,
+      );
+
+      // Get user and topic details for notification
+      const { data: initiator } = await supabase
+        .from('users')
+        .select('username')
+        .eq('user_id', initiatorId)
+        .single();
+
+      const { data: topic } = await supabase
+        .from('topics')
+        .select('title')
+        .eq('topic_id', branchId)
+        .single();
+
+      // Send duel invitation notification
+      await notificationService.sendNotification(
+        opponentId,
+        'duel_invitation',
+        'duel_invitation',
+        {
+          challenger_name: initiator?.username || 'Unknown',
+          challenger_id: initiatorId,
+          topic_name: topic?.title || 'Mixed Topics',
+          duel_id: duel.duel_id,
+        },
+      );
+
+      return duel;
+    } catch (error) {
+      console.error('Error creating duel with notification:', error);
+      throw error;
+    }
+  },
+
+  // Complete duel with notifications
+  async completeWithNotifications(
+    duelId,
+    winnerId,
+    initiatorScore,
+    opponentScore,
+  ) {
+    try {
+      // Use existing complete function
+      const completedDuel = await this.complete(duelId);
+
+      // Get duel and user details
+      const duel = await this.getById(duelId);
+      const { data: winner } = await supabase
+        .from('users')
+        .select('username')
+        .eq('user_id', winnerId)
+        .single();
+
+      const loserId =
+        winnerId === duel.initiator_id ? duel.opponent_id : duel.initiator_id;
+      const { data: loser } = await supabase
+        .from('users')
+        .select('username')
+        .eq('user_id', loserId)
+        .single();
+
+      // Send winner notification
+      await notificationService.sendNotification(
+        winnerId,
+        'duel_result',
+        'duel_result_winner',
+        {
+          opponent_name: loser?.username || 'Unknown',
+          your_score:
+            winnerId === duel.initiator_id ? initiatorScore : opponentScore,
+          opponent_score:
+            winnerId === duel.initiator_id ? opponentScore : initiatorScore,
+          duel_id: duelId,
+        },
+      );
+
+      // Send loser notification
+      await notificationService.sendNotification(
+        loserId,
+        'duel_result',
+        'duel_result_loser',
+        {
+          opponent_name: winner?.username || 'Unknown',
+          your_score:
+            loserId === duel.initiator_id ? initiatorScore : opponentScore,
+          opponent_score:
+            loserId === duel.initiator_id ? opponentScore : initiatorScore,
+          duel_id: duelId,
+        },
+      );
+
+      return completedDuel;
+    } catch (error) {
+      console.error('Error completing duel with notifications:', error);
       throw error;
     }
   },
