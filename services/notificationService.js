@@ -1,6 +1,5 @@
 const admin = require('firebase-admin');
 const sgMail = require('@sendgrid/mail');
-const apn = require('apn');
 const notificationModel = require('../models/notificationModel');
 const { createClient } = require('@supabase/supabase-js');
 const { supabaseUrl, supabaseKey } = require('../config/supabase');
@@ -12,7 +11,6 @@ class NotificationService {
   constructor() {
     this.initializeFirebase();
     this.initializeSendGrid();
-    this.initializeApn();
   }
 
   initializeFirebase() {
@@ -38,22 +36,6 @@ class NotificationService {
       console.log('SendGrid initialized successfully');
     } catch (error) {
       console.error('SendGrid initialization error:', error);
-    }
-  }
-
-  initializeApn() {
-    try {
-      this.apnProvider = new apn.Provider({
-        token: {
-          key: process.env.APPLE_APN_KEY,
-          keyId: process.env.APPLE_APN_KEY_ID,
-          teamId: process.env.APPLE_APN_TEAM_ID,
-        },
-        production: process.env.NODE_ENV === 'production',
-      });
-      console.log('Apple Push Notification service initialized successfully');
-    } catch (error) {
-      console.error('APN initialization error:', error);
     }
   }
 
@@ -139,11 +121,13 @@ class NotificationService {
       const pushPromises = tokens.map((token) => {
         switch (token.platform) {
           case 'android':
-            return this.sendAndroidPush(token.device_token, notification);
           case 'ios':
-            return this.sendIosPush(token.device_token, notification);
           case 'web':
-            return this.sendWebPush(token.device_token, notification);
+            return this.sendFirebasePush(
+              token.device_token,
+              notification,
+              token.platform,
+            );
           default:
             console.warn(`Unknown platform: ${token.platform}`);
             return Promise.resolve();
@@ -157,108 +141,85 @@ class NotificationService {
     }
   }
 
-  // Send Android push notification via Firebase
-  async sendAndroidPush(deviceToken, notification) {
+  // Send push notification via Firebase (handles all platforms)
+  async sendFirebasePush(deviceToken, notification, platform) {
     try {
-      const message = {
+      const baseMessage = {
         token: deviceToken,
         notification: {
           title: notification.title,
           body: notification.body,
-          icon: notification.icon_name,
         },
         data: {
           notification_id: notification.notification_id.toString(),
           notification_type: notification.notification_type,
           action_url: notification.action_url || '',
           metadata: JSON.stringify(notification.metadata || {}),
-        },
-        android: {
-          priority: 'high',
-          ttl: 24 * 60 * 60 * 1000, // 24 hours
         },
       };
 
-      const response = await admin.messaging().send(message);
-      console.log('Android push sent successfully:', response);
-      return response;
-    } catch (error) {
-      console.error('Error sending Android push:', error);
-      // Handle invalid token
-      if (error.code === 'messaging/invalid-registration-token') {
-        await this.disableToken(deviceToken);
-      }
-      throw error;
-    }
-  }
-
-  // Send iOS push notification via Firebase
-  async sendIosPush(deviceToken, notification) {
-    try {
-      const message = {
-        token: deviceToken,
-        notification: {
-          title: notification.title,
-          body: notification.body,
-        },
-        data: {
-          notification_id: notification.notification_id.toString(),
-          notification_type: notification.notification_type,
-          action_url: notification.action_url || '',
-          metadata: JSON.stringify(notification.metadata || {}),
-        },
-        apns: {
-          payload: {
-            aps: {
-              badge: 1,
+      // Platform-specific configurations
+      switch (platform) {
+        case 'android':
+          baseMessage.android = {
+            priority: 'high',
+            ttl: 24 * 60 * 60 * 1000, // 24 hours
+            notification: {
+              icon: notification.icon_name,
+              color: '#1976d2',
               sound: 'default',
             },
-          },
-        },
-      };
+          };
+          break;
 
-      const response = await admin.messaging().send(message);
-      console.log('iOS push sent successfully:', response);
-      return response;
-    } catch (error) {
-      console.error('Error sending iOS push:', error);
-      // Handle invalid token
-      if (error.code === 'messaging/invalid-registration-token') {
-        await this.disableToken(deviceToken);
+        case 'ios':
+          baseMessage.apns = {
+            payload: {
+              aps: {
+                badge: 1,
+                sound: 'default',
+                alert: {
+                  title: notification.title,
+                  body: notification.body,
+                },
+              },
+            },
+            headers: {
+              'apns-priority': '10',
+              'apns-expiration': Math.floor(Date.now() / 1000) + 24 * 60 * 60, // 24 hours
+            },
+          };
+          break;
+
+        case 'web':
+          baseMessage.webpush = {
+            headers: {
+              TTL: '86400', // 24 hours
+            },
+            notification: {
+              title: notification.title,
+              body: notification.body,
+              icon: `/icons/${notification.icon_name}.png`,
+              badge: '/icons/badge.png',
+              requireInteraction: true,
+            },
+            fcmOptions: {
+              link: notification.action_url || '/',
+            },
+          };
+          break;
       }
-      throw error;
-    }
-  }
 
-  // Send web push notification
-  async sendWebPush(deviceToken, notification) {
-    try {
-      const message = {
-        token: deviceToken,
-        notification: {
-          title: notification.title,
-          body: notification.body,
-          icon: `/icons/${notification.icon_name}.png`,
-        },
-        data: {
-          notification_id: notification.notification_id.toString(),
-          notification_type: notification.notification_type,
-          action_url: notification.action_url || '',
-          metadata: JSON.stringify(notification.metadata || {}),
-        },
-        webpush: {
-          headers: {
-            TTL: '86400', // 24 hours
-          },
-        },
-      };
-
-      const response = await admin.messaging().send(message);
-      console.log('Web push sent successfully:', response);
+      const response = await admin.messaging().send(baseMessage);
+      console.log(`${platform} push sent successfully:`, response);
       return response;
     } catch (error) {
-      console.error('Error sending web push:', error);
-      if (error.code === 'messaging/invalid-registration-token') {
+      console.error(`Error sending ${platform} push:`, error);
+      // Handle invalid token
+      if (
+        error.code === 'messaging/invalid-registration-token' ||
+        error.code === 'messaging/registration-token-not-registered'
+      ) {
         await this.disableToken(deviceToken);
       }
       throw error;

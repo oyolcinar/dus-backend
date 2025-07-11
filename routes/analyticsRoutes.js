@@ -1,4 +1,4 @@
-// routes/analyticsRoutes.js - Only adding the missing routes
+// routes/analyticsRoutes.js - Fixed YAML syntax
 
 const express = require('express');
 const router = express.Router();
@@ -152,7 +152,8 @@ router.get(
  *         name: days
  *         schema:
  *           type: integer
- *         description: Number of days to retrieve data for (default: 7)
+ *           default: 7
+ *         description: Number of days to retrieve data for (default 7)
  *     responses:
  *       200:
  *         description: User activity timeline
@@ -174,7 +175,8 @@ router.get('/activity', authSupabase, analyticsController.getActivityTimeline);
  *         name: limit
  *         schema:
  *           type: integer
- *         description: Maximum number of topics to return (default: 5)
+ *           default: 5
+ *         description: Maximum number of topics to return (default 5)
  *     responses:
  *       200:
  *         description: User's weakest topics
