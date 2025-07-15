@@ -10,7 +10,7 @@ const authSupabase = require('../middleware/authSupabase');
  *   description: Duel management
  */
 
-// --- NEW ROUTES ADDED HERE ---
+// --- SPECIFIC ROUTES FIRST (NO PARAMETERS) ---
 
 /**
  * @swagger
@@ -57,42 +57,6 @@ router.get(
   authSupabase,
   duelController.getRecommendedOpponents,
 );
-
-// --- EXISTING ROUTES ---
-
-/**
- * @swagger
- * /api/duels/challenge:
- *   post:
- *     summary: Challenge a user to a duel
- *     tags: [Duels]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - opponentId
- *               - testId
- *             properties:
- *               opponentId:
- *                 type: integer
- *               testId:
- *                 type: integer
- *     responses:
- *       201:
- *         description: Duel challenge sent successfully
- *       400:
- *         description: Invalid input
- *       401:
- *         description: Unauthorized
- *       404:
- *         description: Opponent or test not found
- */
-router.post('/challenge', authSupabase, duelController.challenge);
 
 /**
  * @swagger
@@ -144,6 +108,59 @@ router.get('/completed', authSupabase, duelController.getCompletedDuels);
 
 /**
  * @swagger
+ * /api/duels/stats/user:
+ *   get:
+ *     summary: Get user's duel statistics
+ *     tags: [Duels]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User's duel statistics
+ *       401:
+ *         description: Unauthorized
+ */
+// CRITICAL: This route MUST come BEFORE the parameterized route /:id
+router.get('/stats/user', authSupabase, duelController.getUserStats);
+
+/**
+ * @swagger
+ * /api/duels/challenge:
+ *   post:
+ *     summary: Challenge a user to a duel
+ *     tags: [Duels]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - opponentId
+ *               - testId
+ *             properties:
+ *               opponentId:
+ *                 type: integer
+ *               testId:
+ *                 type: integer
+ *     responses:
+ *       201:
+ *         description: Duel challenge sent successfully
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Opponent or test not found
+ */
+router.post('/challenge', authSupabase, duelController.challenge);
+
+// --- PARAMETERIZED ROUTES LAST ---
+
+/**
+ * @swagger
  * /api/duels/{id}:
  *   get:
  *     summary: Get duel details
@@ -167,6 +184,7 @@ router.get('/completed', authSupabase, duelController.getCompletedDuels);
  *       404:
  *         description: Duel not found
  */
+// CRITICAL: This parameterized route MUST come AFTER all specific routes
 router.get('/:id', authSupabase, duelController.getDuelDetails);
 
 /**
@@ -271,21 +289,5 @@ router.post('/:id/decline', authSupabase, duelController.declineChallenge);
  *         description: Duel not found
  */
 router.post('/:id/result', authSupabase, duelController.submitResult);
-
-/**
- * @swagger
- * /api/duels/stats/user:
- *   get:
- *     summary: Get user's duel statistics
- *     tags: [Duels]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: User's duel statistics
- *       401:
- *         description: Unauthorized
- */
-router.get('/stats/user', authSupabase, duelController.getUserStats);
 
 module.exports = router;

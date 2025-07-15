@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const duelResultController = require('../controllers/duelResultController');
-// Replace the old auth middleware with the new one
 const authSupabase = require('../middleware/authSupabase');
 
 /**
@@ -56,33 +55,6 @@ router.post('/', authSupabase, duelResultController.create);
 
 /**
  * @swagger
- * /api/duel-results/{duelId}:
- *   get:
- *     summary: Get result by duel ID
- *     tags: [Duel Results]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: duelId
- *         required: true
- *         schema:
- *           type: integer
- *         description: Duel ID
- *     responses:
- *       200:
- *         description: Duel result
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: Forbidden - you do not have permission to view this duel result
- *       404:
- *         description: Duel or result not found
- */
-router.get('/:duelId', authSupabase, duelResultController.getByDuelId);
-
-/**
- * @swagger
  * /api/duel-results/stats/user:
  *   get:
  *     summary: Get current user's duel statistics
@@ -95,7 +67,7 @@ router.get('/:duelId', authSupabase, duelResultController.getByDuelId);
  *       401:
  *         description: Unauthorized
  */
-// FIX: This route MUST come BEFORE the parameterized route
+// CRITICAL: This route MUST come BEFORE the parameterized route /:duelId
 router.get('/stats/user', authSupabase, duelResultController.getUserStats);
 
 /**
@@ -123,11 +95,39 @@ router.get('/stats/user', authSupabase, duelResultController.getUserStats);
  *       404:
  *         description: User not found
  */
-// FIX: This route MUST come AFTER the specific route
+// CRITICAL: This route MUST also come BEFORE the parameterized route /:duelId
 router.get(
   '/stats/user/:userId',
   authSupabase,
   duelResultController.getUserStats,
 );
+
+/**
+ * @swagger
+ * /api/duel-results/{duelId}:
+ *   get:
+ *     summary: Get result by duel ID
+ *     tags: [Duel Results]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: duelId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Duel ID
+ *     responses:
+ *       200:
+ *         description: Duel result
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - you do not have permission to view this duel result
+ *       404:
+ *         description: Duel or result not found
+ */
+// CRITICAL: This parameterized route MUST come LAST to avoid conflicts
+router.get('/:duelId', authSupabase, duelResultController.getByDuelId);
 
 module.exports = router;
