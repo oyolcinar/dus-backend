@@ -49,16 +49,16 @@ const io = socketIo(server, {
 });
 
 // IMPORT: Socket handlers for real-time duels
-let setupDuelSockets;
-try {
-  setupDuelSockets = require('./sockets/duelSocketHandler');
-  setupDuelSockets(io);
-  console.log('✅ Real-time duel handlers initialized');
-} catch (error) {
-  console.warn(
-    '⚠️  Duel socket handlers not found - will create files if needed',
-  );
-}
+// let setupDuelSockets;
+// try {
+//   setupDuelSockets = require('./sockets/duelSocketHandler');
+//   setupDuelSockets(io);
+//   console.log('✅ Real-time duel handlers initialized');
+// } catch (error) {
+//   console.warn(
+//     '⚠️  Duel socket handlers not found - will create files if needed',
+//   );
+// }
 
 // MIDDLEWARE (keeping your working configuration)
 app.use(
@@ -184,8 +184,8 @@ const friendRoutes = require('./routes/friendRoutes');
 const answerRoutes = require('./routes/answerRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
-// const duelRoutes = require('./routes/duelRoutes');
-// const duelResultRoutes = require('./routes/duelResultRoutes');
+const duelRoutes = require('./routes/duelRoutes');
+const duelResultRoutes = require('./routes/duelResultRoutes');
 
 // Mount routes (like in your old app.js)
 app.use('/api/auth', authRoutes);
@@ -206,8 +206,8 @@ app.use('/api/friends', friendRoutes);
 app.use('/api/answers', answerRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/notifications', notificationRoutes);
-// app.use('/api/duels', duelRoutes);
-// app.use('/api/duel-results', duelResultRoutes);
+app.use('/api/duels', duelRoutes);
+app.use('/api/duel-results', duelResultRoutes);
 
 console.log('✅ All routes loaded successfully using simple approach');
 
