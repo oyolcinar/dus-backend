@@ -1,6 +1,6 @@
 const express = require('express');
-const http = require('http'); // ADD: HTTP server for Socket.IO
-const socketIo = require('socket.io'); // ADD: Socket.IO
+const http = require('http');
+const socketIo = require('socket.io');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -19,39 +19,31 @@ const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
     origin: [
-      // Production mobile app schemes
       'com.dusapptr.dusapp',
       'com.dusapptr.dusapp://',
       process.env.FRONTEND_URL || 'com.dusapptr.dusapp://',
       process.env.FRONTEND_URL_EAS_BUILD || 'com.dusapptr.dusapp://',
       process.env.FRONTEND_URL_DEFAULT || 'com.dusapptr.dusapp://',
-
-      // Expo development URLs
       process.env.FRONTEND_URL_EXPO_GO ||
         'https://auth.expo.io/@dusapptr/dus-app',
       'exp://localhost:8081',
-      'exp://192.168.1.100:8081', // Update with your IP if needed
-
-      // Development URLs
+      'exp://192.168.1.100:8081',
       'http://localhost:3000',
       'http://localhost:8081',
       'https://localhost:3000',
-
-      // Railway domain (will be set via environment variable)
       ...(process.env.SOCKET_CORS_ORIGINS
         ? process.env.SOCKET_CORS_ORIGINS.split(',')
         : []),
     ],
     methods: ['GET', 'POST'],
     credentials: true,
-    allowEIO3: true, // Support older clients
+    allowEIO3: true,
   },
-  transports: ['websocket', 'polling'], // Support both transport types
-  pingTimeout: 60000, // 60 seconds
-  pingInterval: 25000, // 25 seconds
-  upgradeTimeout: 30000, // 30 seconds
+  transports: ['websocket', 'polling'],
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  upgradeTimeout: 30000,
   allowRequest: (req, callback) => {
-    // Allow all requests in production for now - can add validation later
     callback(null, true);
   },
 });
@@ -63,25 +55,21 @@ try {
   setupDuelSockets(io);
   console.log('✅ Real-time duel handlers initialized');
 } catch (error) {
-  console.warn('⚠️  Duel socket handlers not found - real-time duels disabled');
   console.warn(
-    'Create ./sockets/duelSocketHandler.js to enable real-time duels',
+    '⚠️  Duel socket handlers not found - will create files if needed',
   );
 }
 
-// MIDDLEWARE: CORS configuration for production
+// MIDDLEWARE
 app.use(
   cors({
     origin: [
-      // Production URLs
       'com.dusapptr.dusapp',
       'com.dusapptr.dusapp://',
       process.env.FRONTEND_URL || 'com.dusapptr.dusapp://',
       process.env.FRONTEND_URL_EAS_BUILD || 'com.dusapptr.dusapp://',
       process.env.FRONTEND_URL_EXPO_GO ||
         'https://auth.expo.io/@dusapptr/dus-app',
-
-      // Development URLs
       'http://localhost:3000',
       'http://localhost:8081',
       'exp://localhost:8081',
@@ -95,16 +83,16 @@ app.use(
 
 app.use(
   helmet({
-    crossOriginEmbedderPolicy: false, // Allow Socket.IO embedding
-    contentSecurityPolicy: false, // Disable for development, configure for production
+    crossOriginEmbedderPolicy: false,
+    contentSecurityPolicy: false,
   }),
 );
 
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
-app.use(express.json({ limit: '10mb' })); // Increase limit for mobile uploads
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// HEALTH CHECK: For Railway and monitoring
+// HEALTH CHECK
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'healthy',
@@ -116,7 +104,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Swagger security components
+// Swagger configuration
 const swaggerSecurity = {
   components: {
     securitySchemes: {
@@ -134,29 +122,19 @@ const swaggerSecurity = {
   ],
 };
 
-// Swagger configuration with production URL
 const swaggerOptions = {
   swaggerDefinition: {
     openapi: '3.0.0',
     info: {
       title: 'DUS Application API',
       version: '1.0.0',
-      description:
-        'API documentation for the DUS medical education platform with real-time duels',
+      description: 'API documentation for the DUS medical education platform',
     },
     servers: [
       {
         url: process.env.API_URL || `http://localhost:${PORT}`,
         description: 'API Server',
       },
-      ...(process.env.NODE_ENV === 'production'
-        ? []
-        : [
-            {
-              url: `http://localhost:${PORT}`,
-              description: 'Local Development Server',
-            },
-          ]),
     ],
     ...swaggerSecurity,
   },
@@ -164,177 +142,177 @@ const swaggerOptions = {
 };
 
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
-app.use(
-  '/api-docs',
-  swaggerUi.serve,
-  swaggerUi.setup(swaggerDocs, {
-    explorer: true,
-    customSiteTitle: 'DUS API Documentation',
-    customfavIcon: '/favicon.ico',
-    swaggerOptions: {
-      persistAuthorization: true,
-    },
-  }),
-);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
-// ROOT ROUTE: Enhanced with real-time status
+// ROOT ROUTE
 app.get('/', (req, res) => {
   res.json({
     message: 'Welcome to the DUS Application API',
     version: '1.0.0',
-    features: [
-      'REST API',
-      'Real-time Duels',
-      'Socket.IO',
-      'Medical Education Platform',
-      'Mobile App Support',
-    ],
+    features: ['REST API', 'Real-time Duels', 'Socket.IO'],
     status: 'operational',
     socketConnections: io.engine.clientsCount || 0,
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
-    documentation: '/api-docs',
-    health: '/health',
   });
 });
 
-// API ROUTES: All existing routes maintained
-const userRoutes = require('./routes/userRoutes');
-const testRoutes = require('./routes/testRoutes');
-const questionRoutes = require('./routes/questionRoutes');
-const resultRoutes = require('./routes/resultRoutes');
-const achievementRoutes = require('./routes/achievementRoutes');
-const duelRoutes = require('./routes/duelRoutes');
-const courseRoutes = require('./routes/courseRoutes');
-const topicRoutes = require('./routes/topicRoutes');
-const subtopicRoutes = require('./routes/subtopicRoutes');
-const studyRoutes = require('./routes/studyRoutes');
-const coachingRoutes = require('./routes/coachingRoutes');
-const subscriptionRoutes = require('./routes/subscriptionRoutes');
-const studyPlanRoutes = require('./routes/studyPlanRoutes');
-const friendRoutes = require('./routes/friendRoutes');
-const answerRoutes = require('./routes/answerRoutes');
-const duelResultRoutes = require('./routes/duelResultRoutes');
-const analyticsRoutes = require('./routes/analyticsRoutes');
-const authRoutes = require('./routes/authRoutes');
-const adminRoutes = require('./routes/adminRoutes');
-const notificationRoutes = require('./routes/notificationRoutes');
-
-app.use('/api/auth', authRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/tests', testRoutes);
-app.use('/api/questions', questionRoutes);
-app.use('/api/results', resultRoutes);
-app.use('/api/achievements', achievementRoutes);
-app.use('/api/duels', duelRoutes);
-app.use('/api/courses', courseRoutes);
-app.use('/api/topics', topicRoutes);
-app.use('/api/subtopics', subtopicRoutes);
-app.use('/api/study', studyRoutes);
-app.use('/api/coaching', coachingRoutes);
-app.use('/api/subscriptions', subscriptionRoutes);
-app.use('/api/studyPlans', studyPlanRoutes);
-app.use('/api/friends', friendRoutes);
-app.use('/api/answers', answerRoutes);
-app.use('/api/duel-results', duelResultRoutes);
-app.use('/api/analytics', analyticsRoutes);
-app.use('/api/notifications', notificationRoutes);
-
-// CRON JOBS: Notification system
-const notificationCronJobs = require('./services/notificationCronJobs');
-
-// Initialize cron jobs if enabled
-if (process.env.ENABLE_CRON_JOBS === 'true') {
+// FUNCTION TO SAFELY LOAD ROUTES WITH DETAILED ERROR REPORTING
+function safeLoadRoute(routePath, mountPath) {
   try {
-    notificationCronJobs.init();
-    notificationCronJobs.startAll();
-    console.log('✅ Notification cron jobs started');
+    console.log(`🔍 Loading route: ${routePath} -> ${mountPath}`);
+    const route = require(routePath);
+
+    // Check if route is a valid Express router
+    if (typeof route !== 'function') {
+      throw new Error(
+        `Route ${routePath} does not export a valid Express router`,
+      );
+    }
+
+    app.use(mountPath, route);
+    console.log(`✅ Route loaded successfully: ${mountPath}`);
+    return true;
   } catch (error) {
-    console.warn('⚠️  Failed to start cron jobs:', error.message);
+    console.error(`❌ Failed to load route ${routePath}:`);
+    console.error(`   Error: ${error.message}`);
+    console.error(`   Stack: ${error.stack}`);
+
+    // Create a fallback route that returns an error message
+    app.use(mountPath, (req, res) => {
+      res.status(503).json({
+        error: `Route ${mountPath} is temporarily unavailable`,
+        message: 'This route has a configuration issue and is being fixed',
+        routePath: routePath,
+        timestamp: new Date().toISOString(),
+      });
+    });
+    return false;
   }
 }
 
-// SOCKET.IO: Connection handling and monitoring
+// LOAD ROUTES SAFELY - This will help identify which route is causing the issue
+console.log('🚀 Starting route loading process...');
+
+// Track which routes load successfully
+const routeLoadResults = [];
+
+// Load each route and track results
+const routes = [
+  { path: './routes/authRoutes', mount: '/api/auth' },
+  { path: './routes/adminRoutes', mount: '/api/admin' },
+  { path: './routes/userRoutes', mount: '/api/users' },
+  { path: './routes/testRoutes', mount: '/api/tests' },
+  { path: './routes/questionRoutes', mount: '/api/questions' },
+  { path: './routes/resultRoutes', mount: '/api/results' },
+  { path: './routes/achievementRoutes', mount: '/api/achievements' },
+  { path: './routes/courseRoutes', mount: '/api/courses' },
+  { path: './routes/topicRoutes', mount: '/api/topics' },
+  { path: './routes/subtopicRoutes', mount: '/api/subtopics' },
+  { path: './routes/studyRoutes', mount: '/api/study' },
+  { path: './routes/coachingRoutes', mount: '/api/coaching' },
+  { path: './routes/subscriptionRoutes', mount: '/api/subscriptions' },
+  { path: './routes/studyPlanRoutes', mount: '/api/studyPlans' },
+  { path: './routes/friendRoutes', mount: '/api/friends' },
+  { path: './routes/answerRoutes', mount: '/api/answers' },
+  { path: './routes/analyticsRoutes', mount: '/api/analytics' },
+  { path: './routes/notificationRoutes', mount: '/api/notifications' },
+  { path: './routes/duelRoutes', mount: '/api/duels' },
+  { path: './routes/duelResultRoutes', mount: '/api/duel-results' },
+];
+
+// Load each route with detailed error reporting
+for (const route of routes) {
+  const success = safeLoadRoute(route.path, route.mount);
+  routeLoadResults.push({ ...route, success });
+}
+
+// Report results
+console.log('\n📊 Route Loading Summary:');
+console.log('='.repeat(50));
+const successCount = routeLoadResults.filter((r) => r.success).length;
+const failCount = routeLoadResults.filter((r) => r.success === false).length;
+
+console.log(`✅ Successfully loaded: ${successCount} routes`);
+console.log(`❌ Failed to load: ${failCount} routes`);
+
+if (failCount > 0) {
+  console.log('\n❌ Failed routes:');
+  routeLoadResults
+    .filter((r) => r.success === false)
+    .forEach((r) => console.log(`   - ${r.mount} (${r.path})`));
+}
+
+console.log('='.repeat(50));
+
+// CRON JOBS
+try {
+  const notificationCronJobs = require('./services/notificationCronJobs');
+  if (process.env.ENABLE_CRON_JOBS === 'true') {
+    notificationCronJobs.init();
+    notificationCronJobs.startAll();
+    console.log('✅ Notification cron jobs started');
+  }
+} catch (error) {
+  console.warn('⚠️  Failed to start cron jobs:', error.message);
+}
+
+// SOCKET.IO CONNECTION HANDLING
 io.on('connection', (socket) => {
   console.log(
     `🔗 Socket connected: ${socket.id} (Total: ${io.engine.clientsCount})`,
   );
 
-  // Basic connection info
   socket.emit('connected', {
     socketId: socket.id,
     timestamp: new Date().toISOString(),
     serverVersion: '1.0.0',
   });
 
-  // Handle disconnection
   socket.on('disconnect', (reason) => {
-    console.log(
-      `🔌 Socket disconnected: ${socket.id}, reason: ${reason} (Total: ${io.engine.clientsCount})`,
-    );
+    console.log(`🔌 Socket disconnected: ${socket.id}, reason: ${reason}`);
   });
 
-  // Handle connection errors
   socket.on('error', (error) => {
     console.error(`❌ Socket error for ${socket.id}:`, error);
   });
 
-  // Heartbeat for connection monitoring
   socket.on('heartbeat', () => {
     socket.emit('heartbeat', { timestamp: new Date().toISOString() });
   });
 });
 
-// PRODUCTION MONITORING: Log Socket.IO metrics
-if (process.env.NODE_ENV === 'production') {
-  setInterval(() => {
-    const connections = io.engine.clientsCount;
-    if (connections > 0) {
-      console.log(`📊 Active Socket.IO connections: ${connections}`);
-    }
-  }, 300000); // Log every 5 minutes if there are connections
-}
-
-// ERROR HANDLING: Enhanced for production
+// ERROR HANDLING
 app.use((err, req, res, next) => {
   console.error('💥 Application Error:', err.stack);
 
-  // Don't leak error details in production
   const isDevelopment = process.env.NODE_ENV === 'development';
 
   res.status(err.status || 500).json({
     message: isDevelopment ? err.message : 'Something went wrong!',
     error: isDevelopment ? err.stack : {},
     timestamp: new Date().toISOString(),
-    requestId: req.headers['x-request-id'] || 'unknown',
   });
 });
 
-// 404 HANDLER: For unmatched routes
+// 404 HANDLER
 app.use('*', (req, res) => {
   res.status(404).json({
     message: 'Route not found',
     path: req.originalUrl,
     method: req.method,
     timestamp: new Date().toISOString(),
-    availableEndpoints: [
-      '/api-docs - API Documentation',
-      '/health - Health Check',
-      '/api/auth - Authentication',
-      '/api/duels - Real-time Duels',
-      '/api/tests - Tests and Questions',
-    ],
+    availableRoutes: routeLoadResults
+      .filter((r) => r.success)
+      .map((r) => r.mount),
   });
 });
 
-// GRACEFUL SHUTDOWN: Handle process termination
+// GRACEFUL SHUTDOWN
 process.on('SIGTERM', () => {
   console.log('🛑 SIGTERM received, shutting down gracefully');
-
   server.close(() => {
     console.log('✅ HTTP server closed');
-
     io.close(() => {
       console.log('✅ Socket.IO server closed');
       process.exit(0);
@@ -344,10 +322,8 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
   console.log('🛑 SIGINT received, shutting down gracefully');
-
   server.close(() => {
     console.log('✅ HTTP server closed');
-
     io.close(() => {
       console.log('✅ Socket.IO server closed');
       process.exit(0);
@@ -355,9 +331,10 @@ process.on('SIGINT', () => {
   });
 });
 
-// UNCAUGHT EXCEPTIONS: Log and exit gracefully
+// UNCAUGHT EXCEPTION HANDLER
 process.on('uncaughtException', (error) => {
   console.error('💥 Uncaught Exception:', error);
+  console.error('💥 Stack:', error.stack);
   process.exit(1);
 });
 
@@ -366,9 +343,9 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
-// START SERVER: Use server.listen instead of app.listen for Socket.IO
+// START SERVER
 server.listen(PORT, '0.0.0.0', () => {
-  console.log('🚀 ================================');
+  console.log('\n🚀 ================================');
   console.log(`🚀 DUS API Server running on port ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`📡 Socket.IO server ready for real-time duels`);
@@ -382,8 +359,7 @@ server.listen(PORT, '0.0.0.0', () => {
       process.env.API_URL || `http://localhost:${PORT}`
     }/health`,
   );
-  console.log('🚀 ================================');
+  console.log('🚀 ================================\n');
 });
 
-// EXPORT: For testing and module usage
 module.exports = { app, server, io };
