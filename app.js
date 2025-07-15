@@ -60,7 +60,7 @@ try {
   );
 }
 
-// MIDDLEWARE
+// MIDDLEWARE (keeping your working configuration)
 app.use(
   cors({
     origin: [
@@ -104,7 +104,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Swagger configuration
+// Swagger security components (from your old working config)
 const swaggerSecurity = {
   components: {
     securitySchemes: {
@@ -122,6 +122,7 @@ const swaggerSecurity = {
   ],
 };
 
+// Swagger options (corrected)
 const swaggerOptions = {
   swaggerDefinition: {
     openapi: '3.0.0',
@@ -132,7 +133,11 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: process.env.API_URL || `http://localhost:${PORT}`,
+        // FIX: Use API_URL correctly (only for Swagger, not routing)
+        url:
+          process.env.NODE_ENV === 'production'
+            ? process.env.API_URL || 'https://dus-backend.railway.app'
+            : `http://localhost:${PORT}`,
         description: 'API Server',
       },
     ],
@@ -144,7 +149,7 @@ const swaggerOptions = {
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
-// ROOT ROUTE
+// ROOT ROUTE (enhanced version)
 app.get('/', (req, res) => {
   res.json({
     message: 'Welcome to the DUS Application API',
@@ -157,95 +162,56 @@ app.get('/', (req, res) => {
   });
 });
 
-// FUNCTION TO SAFELY LOAD ROUTES WITH DETAILED ERROR REPORTING
-function safeLoadRoute(routePath, mountPath) {
-  try {
-    console.log(`🔍 Loading route: ${routePath} -> ${mountPath}`);
-    const route = require(routePath);
+// ROUTES - BACK TO SIMPLE WORKING APPROACH FROM YOUR OLD APP.JS
+console.log('🚀 Loading routes using simple approach...');
 
-    // Check if route is a valid Express router
-    if (typeof route !== 'function') {
-      throw new Error(
-        `Route ${routePath} does not export a valid Express router`,
-      );
-    }
+// Import all routes (like in your old app.js)
+const authRoutes = require('./routes/authRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const userRoutes = require('./routes/userRoutes');
+const testRoutes = require('./routes/testRoutes');
+const questionRoutes = require('./routes/questionRoutes');
+const resultRoutes = require('./routes/resultRoutes');
+const achievementRoutes = require('./routes/achievementRoutes');
+const courseRoutes = require('./routes/courseRoutes');
+const topicRoutes = require('./routes/topicRoutes');
+const subtopicRoutes = require('./routes/subtopicRoutes');
+const studyRoutes = require('./routes/studyRoutes');
+const coachingRoutes = require('./routes/coachingRoutes');
+const subscriptionRoutes = require('./routes/subscriptionRoutes');
+const studyPlanRoutes = require('./routes/studyPlanRoutes');
+const friendRoutes = require('./routes/friendRoutes');
+const answerRoutes = require('./routes/answerRoutes');
+const analyticsRoutes = require('./routes/analyticsRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const duelRoutes = require('./routes/duelRoutes');
+const duelResultRoutes = require('./routes/duelResultRoutes');
 
-    app.use(mountPath, route);
-    console.log(`✅ Route loaded successfully: ${mountPath}`);
-    return true;
-  } catch (error) {
-    console.error(`❌ Failed to load route ${routePath}:`);
-    console.error(`   Error: ${error.message}`);
-    console.error(`   Stack: ${error.stack}`);
+// Mount routes (like in your old app.js)
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/tests', testRoutes);
+app.use('/api/questions', questionRoutes);
+app.use('/api/results', resultRoutes);
+app.use('/api/achievements', achievementRoutes);
+app.use('/api/courses', courseRoutes);
+app.use('/api/topics', topicRoutes);
+app.use('/api/subtopics', subtopicRoutes);
+app.use('/api/study', studyRoutes);
+app.use('/api/coaching', coachingRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/studyPlans', studyPlanRoutes);
+app.use('/api/friends', friendRoutes);
+app.use('/api/answers', answerRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/duels', duelRoutes);
+app.use('/api/duel-results', duelResultRoutes);
 
-    // Create a fallback route that returns an error message
-    app.use(mountPath, (req, res) => {
-      res.status(503).json({
-        error: `Route ${mountPath} is temporarily unavailable`,
-        message: 'This route has a configuration issue and is being fixed',
-        routePath: routePath,
-        timestamp: new Date().toISOString(),
-      });
-    });
-    return false;
-  }
-}
+console.log('✅ All routes loaded successfully using simple approach');
 
-// LOAD ROUTES SAFELY - This will help identify which route is causing the issue
-console.log('🚀 Starting route loading process...');
-
-// Track which routes load successfully
-const routeLoadResults = [];
-
-// Load each route and track results
-const routes = [
-  { path: './routes/authRoutes', mount: '/api/auth' },
-  { path: './routes/adminRoutes', mount: '/api/admin' },
-  { path: './routes/userRoutes', mount: '/api/users' },
-  { path: './routes/testRoutes', mount: '/api/tests' },
-  { path: './routes/questionRoutes', mount: '/api/questions' },
-  { path: './routes/resultRoutes', mount: '/api/results' },
-  { path: './routes/achievementRoutes', mount: '/api/achievements' },
-  { path: './routes/courseRoutes', mount: '/api/courses' },
-  { path: './routes/topicRoutes', mount: '/api/topics' },
-  { path: './routes/subtopicRoutes', mount: '/api/subtopics' },
-  { path: './routes/studyRoutes', mount: '/api/study' },
-  { path: './routes/coachingRoutes', mount: '/api/coaching' },
-  { path: './routes/subscriptionRoutes', mount: '/api/subscriptions' },
-  { path: './routes/studyPlanRoutes', mount: '/api/studyPlans' },
-  { path: './routes/friendRoutes', mount: '/api/friends' },
-  { path: './routes/answerRoutes', mount: '/api/answers' },
-  { path: './routes/analyticsRoutes', mount: '/api/analytics' },
-  { path: './routes/notificationRoutes', mount: '/api/notifications' },
-  { path: './routes/duelRoutes', mount: '/api/duels' },
-  { path: './routes/duelResultRoutes', mount: '/api/duel-results' },
-];
-
-// Load each route with detailed error reporting
-for (const route of routes) {
-  const success = safeLoadRoute(route.path, route.mount);
-  routeLoadResults.push({ ...route, success });
-}
-
-// Report results
-console.log('\n📊 Route Loading Summary:');
-console.log('='.repeat(50));
-const successCount = routeLoadResults.filter((r) => r.success).length;
-const failCount = routeLoadResults.filter((r) => r.success === false).length;
-
-console.log(`✅ Successfully loaded: ${successCount} routes`);
-console.log(`❌ Failed to load: ${failCount} routes`);
-
-if (failCount > 0) {
-  console.log('\n❌ Failed routes:');
-  routeLoadResults
-    .filter((r) => r.success === false)
-    .forEach((r) => console.log(`   - ${r.mount} (${r.path})`));
-}
-
-console.log('='.repeat(50));
-
-// CRON JOBS
+// CRON JOBS (keep as is)
 try {
   const notificationCronJobs = require('./services/notificationCronJobs');
   if (process.env.ENABLE_CRON_JOBS === 'true') {
@@ -257,7 +223,7 @@ try {
   console.warn('⚠️  Failed to start cron jobs:', error.message);
 }
 
-// SOCKET.IO CONNECTION HANDLING
+// SOCKET.IO CONNECTION HANDLING (keep as is)
 io.on('connection', (socket) => {
   console.log(
     `🔗 Socket connected: ${socket.id} (Total: ${io.engine.clientsCount})`,
@@ -282,7 +248,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// ERROR HANDLING
+// ERROR HANDLING (keep as is)
 app.use((err, req, res, next) => {
   console.error('💥 Application Error:', err.stack);
 
@@ -295,20 +261,17 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 HANDLER
+// 404 HANDLER (simplified)
 app.use('*', (req, res) => {
   res.status(404).json({
     message: 'Route not found',
     path: req.originalUrl,
     method: req.method,
     timestamp: new Date().toISOString(),
-    availableRoutes: routeLoadResults
-      .filter((r) => r.success)
-      .map((r) => r.mount),
   });
 });
 
-// GRACEFUL SHUTDOWN
+// GRACEFUL SHUTDOWN (keep as is)
 process.on('SIGTERM', () => {
   console.log('🛑 SIGTERM received, shutting down gracefully');
   server.close(() => {
@@ -331,10 +294,22 @@ process.on('SIGINT', () => {
   });
 });
 
-// UNCAUGHT EXCEPTION HANDLER
+// UNCAUGHT EXCEPTION HANDLER (enhanced for path-to-regexp debugging)
 process.on('uncaughtException', (error) => {
   console.error('💥 Uncaught Exception:', error);
   console.error('💥 Stack:', error.stack);
+
+  // Special handling for path-to-regexp errors
+  if (error.message.includes('Missing parameter name')) {
+    console.error('\n🚨 PATH-TO-REGEXP ERROR DETECTED:');
+    console.error('This error occurs when a route has a malformed parameter.');
+    console.error('Check your route files for patterns like:');
+    console.error("- router.get('/:')");
+    console.error("- router.post('/:id/')");
+    console.error("- router.put('/users/:')");
+    console.error("- router.delete('/:id/:')");
+  }
+
   process.exit(1);
 });
 
@@ -343,7 +318,7 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
-// START SERVER
+// START SERVER (keep as is)
 server.listen(PORT, '0.0.0.0', () => {
   console.log('\n🚀 ================================');
   console.log(`🚀 DUS API Server running on port ${PORT}`);
