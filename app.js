@@ -49,16 +49,16 @@ const io = socketIo(server, {
 });
 
 // IMPORT: Socket handlers for real-time duels
-// let setupDuelSockets;
-// try {
-//   setupDuelSockets = require('./sockets/duelSocketHandler');
-//   setupDuelSockets(io);
-//   console.log('✅ Real-time duel handlers initialized');
-// } catch (error) {
-//   console.warn(
-//     '⚠️  Duel socket handlers not found - will create files if needed',
-//   );
-// }
+let setupDuelSockets;
+try {
+  setupDuelSockets = require('./sockets/duelSocketHandler');
+  setupDuelSockets(io);
+  console.log('✅ Real-time duel handlers initialized');
+} catch (error) {
+  console.warn(
+    '⚠️  Duel socket handlers not found - will create files if needed',
+  );
+}
 
 // MIDDLEWARE (keeping your working configuration)
 app.use(
@@ -262,7 +262,7 @@ app.use((err, req, res, next) => {
 });
 
 // 404 HANDLER (simplified)
-app.use('*', (req, res) => {
+app.use('/{*any}', (req, res) => {
   res.status(404).json({
     message: 'Route not found',
     path: req.originalUrl,
