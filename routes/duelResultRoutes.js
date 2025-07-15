@@ -83,6 +83,23 @@ router.get('/:duelId', authSupabase, duelResultController.getByDuelId);
 
 /**
  * @swagger
+ * /api/duel-results/stats/user:
+ *   get:
+ *     summary: Get current user's duel statistics
+ *     tags: [Duel Results]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Current user's duel statistics
+ *       401:
+ *         description: Unauthorized
+ */
+// FIX: This route MUST come BEFORE the parameterized route
+router.get('/stats/user', authSupabase, duelResultController.getUserStats);
+
+/**
+ * @swagger
  * /api/duel-results/stats/user/{userId}:
  *   get:
  *     summary: Get user's duel statistics
@@ -106,26 +123,11 @@ router.get('/:duelId', authSupabase, duelResultController.getByDuelId);
  *       404:
  *         description: User not found
  */
+// FIX: This route MUST come AFTER the specific route
 router.get(
   '/stats/user/:userId',
   authSupabase,
   duelResultController.getUserStats,
 );
-
-/**
- * @swagger
- * /api/duel-results/stats/user:
- *   get:
- *     summary: Get current user's duel statistics
- *     tags: [Duel Results]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Current user's duel statistics
- *       401:
- *         description: Unauthorized
- */
-router.get('/stats/user', authSupabase, duelResultController.getUserStats);
 
 module.exports = router;
