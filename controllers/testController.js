@@ -1,4 +1,5 @@
 const testModel = require('../models/testModel');
+const courseModel = require('../models/courseModel');
 // Import Supabase client for any direct operations
 const { createClient } = require('@supabase/supabase-js');
 const { supabaseUrl, supabaseKey } = require('../config/supabase');
@@ -10,13 +11,13 @@ const testController = {
   // Create a new test
   async create(req, res) {
     try {
-      const { title, description, difficultyLevel, timeLimit } = req.body;
+      const { title, description, courseId, difficultyLevel, timeLimit } = req.body;
 
       // Validate input
-      if (!title || !difficultyLevel) {
+      if (!title || !difficultyLevel || !courseId) {
         return res
           .status(400)
-          .json({ message: 'Title and difficulty level are required' });
+          .json({ message: 'Title, course ID, and difficulty level are required' });
       }
 
       // Validate difficulty level
@@ -33,6 +34,12 @@ const testController = {
           .json({ message: 'Time limit must be between 1 and 180 minutes' });
       }
 
+      // Check if course exists
+      const course = await courseModel.getById(courseId);
+      if (!course) {
+        return res.status(404).json({ message: 'Course not found' });
+      }
+
       // Check if user has admin permissions
       if (req.user.role !== 'admin') {
         return res
@@ -40,10 +47,11 @@ const testController = {
           .json({ message: 'Only administrators can create tests' });
       }
 
-      // Create test with new time limit parameter
+      // Create test with course_id
       const newTest = await testModel.create(
         title,
         description || null,
+        courseId,
         difficultyLevel,
         timeLimit || 30, // Default to 30 minutes if not provided
       );
@@ -61,11 +69,60 @@ const testController = {
   // Get all tests
   async getAll(req, res) {
     try {
-      const tests = await testModel.getAll();
+      const { courseId, courseType } = req.query;
+
+      let tests;
+      if (courseId) {
+        tests = await testModel.getByCourseId(courseId);
+      } else if (courseType) {
+        tests = await testModel.getByCourseType(courseType);
+      } else {
+        tests = await testModel.getAll();
+      }
+
       res.json(tests);
     } catch (error) {
       console.error('Get tests error:', error);
       res.status(500).json({ message: 'Failed to retrieve tests' });
+    }
+  },
+
+  // Get tests by course ID
+  async getByCourseId(req, res) {
+    try {
+      const courseId = parseInt(req.params.courseId);
+
+      // Check if course exists
+      const course = await courseModel.getById(courseId);
+      if (!course) {
+        return res.status(404).json({ message: 'Course not found' });
+      }
+
+      const tests = await testModel.getByCourseId(courseId);
+      res.json(tests);
+    } catch (error) {
+      console.error('Get tests by course ID error:', error);
+      res.status(500).json({ message: 'Failed to retrieve tests by course ID' });
+    }
+  },
+
+  // Get tests by course type
+  async getByCourseType(req, res) {
+    try {
+      const { courseType } = req.params;
+
+      // Validate course type
+      if (!['temel_dersler', 'klinik_dersler'].includes(courseType)) {
+        return res.status(400).json({ 
+          message: 'Course type must be either "temel_dersler" or "klinik_dersler"' 
+        });
+      }
+
+      const tests = await testModel.getByCourseType(courseType);
+      res.json(tests);
+    } catch (error) {
+      console.error('Get tests by course type error:', error);
+      res.status(500).json({ message: 'Failed to retrieve tests by course type' });
     }
   },
 
@@ -109,7 +166,7 @@ const testController = {
   async update(req, res) {
     try {
       const testId = req.params.id;
-      const { title, description, difficultyLevel, timeLimit } = req.body;
+      const { title, description, courseId, difficultyLevel, timeLimit } = req.body;
 
       // Check if test exists
       const existingTest = await testModel.getById(testId);
@@ -122,6 +179,14 @@ const testController = {
         return res
           .status(403)
           .json({ message: 'Only administrators can update tests' });
+      }
+
+      // Validate course ID if provided
+      if (courseId !== undefined) {
+        const course = await courseModel.getById(courseId);
+        if (!course) {
+          return res.status(404).json({ message: 'Course not found' });
+        }
       }
 
       // Validate difficulty level if provided
@@ -144,10 +209,11 @@ const testController = {
       // Update test
       const updatedTest = await testModel.update(
         testId,
-        title || existingTest.title,
-        description !== undefined ? description : existingTest.description,
-        difficultyLevel || existingTest.difficulty_level,
-        timeLimit !== undefined ? timeLimit : existingTest.time_limit,
+        title,
+        description,
+        courseId,
+        difficultyLevel,
+        timeLimit,
       );
 
       res.json({
@@ -157,6 +223,58 @@ const testController = {
     } catch (error) {
       console.error('Update test error:', error);
       res.status(500).json({ message: 'Failed to update test' });
+    }
+  },
+
+  // Get test statistics
+  async getTestStats(req, res) {
+    try {
+      const testId = req.params.id;
+
+      // Check if test exists
+      const test = await testModel.getById(testId);
+      if (!test) {
+        return res.status(404).json({ message: 'Test not found' });
+      }
+
+      const stats = await testModel.getTestStats(testId);
+      
+      res.json({
+        test: {
+          testId: test.test_id,
+          title: test.title,
+          course: test.courses,
+        },
+        statistics: stats,
+      });
+    } catch (error) {
+      console.error('Get test statistics error:', error);
+      res.status(500).json({ message: 'Failed to retrieve test statistics' });
+    }
+  },
+
+  // Check if user has taken test before
+  async checkUserTestHistory(req, res) {
+    try {
+      const testId = req.params.id;
+      const userId = req.user.userId;
+
+      // Check if test exists
+      const test = await testModel.getById(testId);
+      if (!test) {
+        return res.status(404).json({ message: 'Test not found' });
+      }
+
+      const history = await testModel.hasUserTakenTest(userId, testId);
+      
+      res.json({
+        testId,
+        userId,
+        ...history,
+      });
+    } catch (error) {
+      console.error('Check user test history error:', error);
+      res.status(500).json({ message: 'Failed to check user test history' });
     }
   },
 
