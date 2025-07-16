@@ -583,6 +583,9 @@ const analyticsController = {
     try {
       const userId = req.user.userId;
 
+      // Initialize Supabase client
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
       // Get all study sessions for this user
       const { data: sessions, error } = await supabase
         .from('study_sessions')
@@ -637,6 +640,85 @@ const analyticsController = {
       res
         .status(500)
         .json({ message: 'Failed to retrieve study time distribution' });
+    }
+  },
+
+  // Get detailed answer explanations for user's recent incorrect answers
+  async getAnswerExplanations(req, res) {
+    try {
+      const userId = req.user.userId;
+      const limit = parseInt(req.query.limit) || 10;
+
+      // Initialize Supabase client
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      // Get recent incorrect answers with explanations
+      const { data: incorrectAnswers, error } = await supabase
+        .from('user_answers')
+        .select(
+          `
+          answer_id,
+          user_answer,
+          is_correct,
+          answer_definition,
+          created_at,
+          test_questions (
+            question_id,
+            question_text,
+            correct_answer,
+            options
+          ),
+          user_test_results (
+            test_id,
+            tests (
+              title,
+              course_id,
+              courses (
+                title
+              )
+            )
+          )
+        `,
+        )
+        .eq('is_correct', false)
+        .not('answer_definition', 'is', null)
+        .in(
+          'result_id',
+          supabase
+            .from('user_test_results')
+            .select('result_id')
+            .eq('user_id', userId),
+        )
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+
+      const formattedAnswers = incorrectAnswers.map((answer) => ({
+        answerId: answer.answer_id,
+        questionText: answer.test_questions?.question_text,
+        userAnswer: answer.user_answer,
+        correctAnswer: answer.test_questions?.correct_answer,
+        explanation: answer.answer_definition,
+        options: answer.test_questions?.options,
+        testTitle: answer.user_test_results?.tests?.title,
+        courseTitle: answer.user_test_results?.tests?.courses?.title,
+        answeredAt: answer.created_at,
+      }));
+
+      // Log analytics activity
+      console.log(
+        `User ${userId} (${req.user.email}) accessed answer explanations`,
+      );
+
+      res.json({
+        incorrectAnswers: formattedAnswers,
+      });
+    } catch (error) {
+      console.error('Get answer explanations error:', error);
+      res
+        .status(500)
+        .json({ message: 'Failed to retrieve answer explanations' });
     }
   },
 };
