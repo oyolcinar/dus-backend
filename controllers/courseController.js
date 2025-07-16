@@ -6,11 +6,18 @@ const courseController = {
   // Create a new course
   async create(req, res) {
     try {
-      const { title, description, imageUrl } = req.body;
+      const { title, description, imageUrl, courseType } = req.body;
 
       // Validate input
       if (!title) {
         return res.status(400).json({ message: 'Title is required' });
+      }
+
+      // Validate courseType if provided
+      if (courseType && !['temel_dersler', 'klinik_dersler'].includes(courseType)) {
+        return res.status(400).json({ 
+          message: 'Course type must be either "temel_dersler" or "klinik_dersler"' 
+        });
       }
 
       // Create course
@@ -18,6 +25,7 @@ const courseController = {
         title,
         description || null,
         imageUrl || null,
+        courseType || 'temel_dersler',
       );
 
       // Log admin activity
@@ -38,11 +46,14 @@ const courseController = {
   // Get all courses
   async getAll(req, res) {
     try {
-      // Check if we should filter courses by subscription type
+      // Check if we should filter courses by subscription type or course type
       const subscriptionType = req.query.subscriptionType;
+      const courseType = req.query.courseType;
 
       let courses;
-      if (subscriptionType) {
+      if (courseType) {
+        courses = await courseModel.getByType(courseType);
+      } else if (subscriptionType) {
         courses = await courseModel.getBySubscriptionType(subscriptionType);
       } else {
         courses = await courseModel.getAll();
@@ -58,6 +69,26 @@ const courseController = {
     } catch (error) {
       console.error('Get courses error:', error);
       res.status(500).json({ message: 'Failed to retrieve courses' });
+    }
+  },
+
+  // Get courses by type
+  async getByType(req, res) {
+    try {
+      const { courseType } = req.params;
+
+      // Validate course type
+      if (!['temel_dersler', 'klinik_dersler'].includes(courseType)) {
+        return res.status(400).json({ 
+          message: 'Course type must be either "temel_dersler" or "klinik_dersler"' 
+        });
+      }
+
+      const courses = await courseModel.getByType(courseType);
+      res.json(courses);
+    } catch (error) {
+      console.error('Get courses by type error:', error);
+      res.status(500).json({ message: 'Failed to retrieve courses by type' });
     }
   },
 
@@ -105,12 +136,19 @@ const courseController = {
   async update(req, res) {
     try {
       const courseId = parseInt(req.params.id);
-      const { title, description, imageUrl } = req.body;
+      const { title, description, imageUrl, courseType } = req.body;
 
       // Check if course exists
       const existingCourse = await courseModel.getById(courseId);
       if (!existingCourse) {
         return res.status(404).json({ message: 'Course not found' });
+      }
+
+      // Validate courseType if provided
+      if (courseType && !['temel_dersler', 'klinik_dersler'].includes(courseType)) {
+        return res.status(400).json({ 
+          message: 'Course type must be either "temel_dersler" or "klinik_dersler"' 
+        });
       }
 
       // Update course
@@ -119,6 +157,7 @@ const courseController = {
         title || existingCourse.title,
         description !== undefined ? description : existingCourse.description,
         imageUrl !== undefined ? imageUrl : existingCourse.image_url,
+        courseType || existingCourse.course_type,
       );
 
       // Log admin activity
@@ -253,6 +292,34 @@ const courseController = {
     } catch (error) {
       console.error('Mark subtopic completed error:', error);
       res.status(500).json({ message: 'Failed to mark subtopic as completed' });
+    }
+  },
+
+  // Get course statistics
+  async getCourseStats(req, res) {
+    try {
+      const courseId = parseInt(req.params.id);
+
+      // Check if course exists
+      const course = await courseModel.getById(courseId);
+      if (!course) {
+        return res.status(404).json({ message: 'Course not found' });
+      }
+
+      // Get course statistics
+      const stats = await courseModel.getCourseStats(courseId);
+
+      res.json({
+        course: {
+          courseId: course.course_id,
+          title: course.title,
+          courseType: course.course_type,
+        },
+        statistics: stats,
+      });
+    } catch (error) {
+      console.error('Get course statistics error:', error);
+      res.status(500).json({ message: 'Failed to retrieve course statistics' });
     }
   },
 };
