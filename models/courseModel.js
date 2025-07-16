@@ -6,7 +6,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 const courseModel = {
   // Create a new course
-  async create(title, description, imageUrl) {
+  async create(title, description, imageUrl, courseType = 'temel_dersler') {
     try {
       const { data, error } = await supabase
         .from('courses')
@@ -14,6 +14,7 @@ const courseModel = {
           title,
           description,
           image_url: imageUrl,
+          course_type: courseType,
         })
         .select()
         .single();
@@ -32,12 +33,30 @@ const courseModel = {
       const { data, error } = await supabase
         .from('courses')
         .select('*')
-        .order('title');
+        .order('course_type', { ascending: true })
+        .order('title', { ascending: true });
 
       if (error) throw error;
       return data;
     } catch (error) {
       console.error('Error retrieving all courses:', error);
+      throw error;
+    }
+  },
+
+  // Get courses by type
+  async getByType(courseType) {
+    try {
+      const { data, error } = await supabase
+        .from('courses')
+        .select('*')
+        .eq('course_type', courseType)
+        .order('title');
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error(`Error retrieving courses by type (${courseType}):`, error);
       throw error;
     }
   },
@@ -51,6 +70,7 @@ const courseModel = {
       const { data, error } = await supabase
         .from('courses')
         .select('*')
+        .order('course_type', { ascending: true })
         .order('title');
 
       if (error) throw error;
@@ -82,15 +102,17 @@ const courseModel = {
   },
 
   // Update course
-  async update(courseId, title, description, imageUrl) {
+  async update(courseId, title, description, imageUrl, courseType) {
     try {
+      const updateData = {};
+      if (title !== undefined) updateData.title = title;
+      if (description !== undefined) updateData.description = description;
+      if (imageUrl !== undefined) updateData.image_url = imageUrl;
+      if (courseType !== undefined) updateData.course_type = courseType;
+
       const { data, error } = await supabase
         .from('courses')
-        .update({
-          title,
-          description,
-          image_url: imageUrl,
-        })
+        .update(updateData)
         .eq('course_id', courseId)
         .select()
         .single();
@@ -274,6 +296,51 @@ const courseModel = {
         `Error marking subtopic ${subtopicId} as completed for user ${userId}:`,
         error,
       );
+      throw error;
+    }
+  },
+
+  // Get course statistics
+  async getCourseStats(courseId) {
+    try {
+      // Get total tests for this course
+      const { data: tests, error: testsError } = await supabase
+        .from('tests')
+        .select('test_id')
+        .eq('course_id', courseId);
+
+      if (testsError) throw testsError;
+
+      // Get total questions for this course
+      const testIds = tests.map(t => t.test_id);
+      let totalQuestions = 0;
+      
+      if (testIds.length > 0) {
+        const { data: questions, error: questionsError } = await supabase
+          .from('test_questions')
+          .select('question_id')
+          .in('test_id', testIds);
+
+        if (questionsError) throw questionsError;
+        totalQuestions = questions.length;
+      }
+
+      // Get total topics for this course
+      const { data: topics, error: topicsError } = await supabase
+        .from('topics')
+        .select('topic_id')
+        .eq('course_id', courseId);
+
+      if (topicsError) throw topicsError;
+
+      return {
+        courseId,
+        totalTests: tests.length,
+        totalQuestions,
+        totalTopics: topics.length,
+      };
+    } catch (error) {
+      console.error(`Error getting course statistics for course ${courseId}:`, error);
       throw error;
     }
   },
