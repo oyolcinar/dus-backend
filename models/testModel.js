@@ -7,7 +7,14 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 const testModel = {
   // Create a new test
-  async create(title, description, courseId, difficultyLevel, timeLimit = 30) {
+  async create(
+    title,
+    description,
+    courseId,
+    topicId,
+    difficultyLevel,
+    timeLimit = 30,
+  ) {
     try {
       const { data, error } = await supabase
         .from('tests')
@@ -15,6 +22,7 @@ const testModel = {
           title,
           description,
           course_id: courseId,
+          topic_id: topicId,
           difficulty_level: difficultyLevel,
           time_limit: timeLimit,
           // question_count will default to 0 as set in the database
@@ -34,14 +42,21 @@ const testModel = {
     try {
       const { data, error } = await supabase
         .from('tests')
-        .select(`
+        .select(
+          `
           *,
           courses (
             course_id,
             title,
             course_type
+          ),
+          topics (
+            topic_id,
+            title,
+            description
           )
-        `)
+        `,
+        )
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data;
@@ -56,14 +71,21 @@ const testModel = {
     try {
       const { data, error } = await supabase
         .from('tests')
-        .select(`
+        .select(
+          `
           *,
           courses (
             course_id,
             title,
             course_type
+          ),
+          topics (
+            topic_id,
+            title,
+            description
           )
-        `)
+        `,
+        )
         .eq('course_id', courseId)
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -74,19 +96,56 @@ const testModel = {
     }
   },
 
+  // Get tests by topic ID
+  async getByTopicId(topicId) {
+    try {
+      const { data, error } = await supabase
+        .from('tests')
+        .select(
+          `
+          *,
+          courses (
+            course_id,
+            title,
+            course_type
+          ),
+          topics (
+            topic_id,
+            title,
+            description
+          )
+        `,
+        )
+        .eq('topic_id', topicId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error getting tests by topic ID:', error);
+      throw error;
+    }
+  },
+
   // Get tests by course type
   async getByCourseType(courseType) {
     try {
       const { data, error } = await supabase
         .from('tests')
-        .select(`
+        .select(
+          `
           *,
           courses!inner (
             course_id,
             title,
             course_type
+          ),
+          topics (
+            topic_id,
+            title,
+            description
           )
-        `)
+        `,
+        )
         .eq('courses.course_type', courseType)
         .order('created_at', { ascending: false });
       if (error) throw error;
@@ -102,14 +161,21 @@ const testModel = {
     try {
       const { data, error } = await supabase
         .from('tests')
-        .select(`
+        .select(
+          `
           *,
           courses (
             course_id,
             title,
             course_type
+          ),
+          topics (
+            topic_id,
+            title,
+            description
           )
-        `)
+        `,
+        )
         .eq('test_id', testId)
         .single();
       if (error && error.code !== 'PGRST116') throw error; // PGRST116 is the "no rows returned" error
@@ -121,13 +187,22 @@ const testModel = {
   },
 
   // Update test
-  async update(testId, title, description, courseId, difficultyLevel, timeLimit) {
+  async update(
+    testId,
+    title,
+    description,
+    courseId,
+    topicId,
+    difficultyLevel,
+    timeLimit,
+  ) {
     try {
       // Create update object with only the fields that are provided
       const updateData = {};
       if (title !== undefined) updateData.title = title;
       if (description !== undefined) updateData.description = description;
       if (courseId !== undefined) updateData.course_id = courseId;
+      if (topicId !== undefined) updateData.topic_id = topicId;
       if (difficultyLevel !== undefined)
         updateData.difficulty_level = difficultyLevel;
       if (timeLimit !== undefined) updateData.time_limit = timeLimit;
@@ -142,14 +217,21 @@ const testModel = {
         .from('tests')
         .update(updateData)
         .eq('test_id', testId)
-        .select(`
+        .select(
+          `
           *,
           courses (
             course_id,
             title,
             course_type
+          ),
+          topics (
+            topic_id,
+            title,
+            description
           )
-        `)
+        `,
+        )
         .single();
 
       if (error) throw error;
@@ -208,9 +290,11 @@ const testModel = {
 
       // Calculate average score
       const totalAttempts = attempts.length;
-      const averageScore = totalAttempts > 0 
-        ? attempts.reduce((sum, attempt) => sum + Number(attempt.score), 0) / totalAttempts
-        : 0;
+      const averageScore =
+        totalAttempts > 0
+          ? attempts.reduce((sum, attempt) => sum + Number(attempt.score), 0) /
+            totalAttempts
+          : 0;
 
       return {
         testId,
@@ -236,7 +320,7 @@ const testModel = {
         .limit(1);
 
       if (error) throw error;
-      
+
       return {
         hasTaken: data.length > 0,
         lastAttempt: data[0] || null,

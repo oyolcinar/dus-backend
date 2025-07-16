@@ -1,4 +1,4 @@
-// controllers/analyticsController.js - Complete Implementation
+// controllers/analyticsController.js - Complete Implementation with Topic Support
 
 const { sessionModel, errorAnalyticsModel } = require('../models/studyModels');
 const userModel = require('../models/userModel');
@@ -34,11 +34,18 @@ const analyticsController = {
       const topicAccuracyRates =
         await errorAnalyticsModel.getTopicAccuracyRates(userId);
 
-      // Combine time and accuracy data
+      // Get test performance by topic
+      const testTopicPerformance = await this.getTestTopicPerformance(userId);
+
+      // Combine time, accuracy, and test data
       const topicAnalytics = topicTimeStats.map((topic) => {
         const accuracyData = topicAccuracyRates.find(
           (t) => t.topic_id === topic.topic_id,
         ) || { accuracy_rate: 0, correct_answers: 0, total_attempts: 0 };
+
+        const testData = testTopicPerformance.find(
+          (t) => t.topic_id === topic.topic_id,
+        ) || { test_accuracy: 0, tests_taken: 0, avg_test_score: 0 };
 
         return {
           topicId: topic.topic_id,
@@ -49,6 +56,9 @@ const analyticsController = {
           accuracyRate: parseFloat(accuracyData.accuracy_rate).toFixed(1),
           correctAnswers: accuracyData.correct_answers || 0,
           totalAttempts: accuracyData.total_attempts || 0,
+          testAccuracy: parseFloat(testData.test_accuracy || 0).toFixed(1),
+          testsTaken: testData.tests_taken || 0,
+          avgTestScore: parseFloat(testData.avg_test_score || 0).toFixed(1),
         };
       });
 
@@ -84,6 +94,73 @@ const analyticsController = {
       res
         .status(500)
         .json({ message: 'Failed to retrieve dashboard analytics' });
+    }
+  },
+
+  // Helper method to get test performance by topic
+  async getTestTopicPerformance(userId) {
+    try {
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      const { data, error } = await supabase
+        .from('user_test_results')
+        .select(
+          `
+          score,
+          tests!inner (
+            topic_id,
+            topics (
+              topic_id,
+              title
+            )
+          )
+        `,
+        )
+        .eq('user_id', userId)
+        .not('tests.topic_id', 'is', null);
+
+      if (error) throw error;
+
+      // Group by topic and calculate averages
+      const topicMap = new Map();
+
+      data.forEach((result) => {
+        const topicId = result.tests.topic_id;
+        const score = parseFloat(result.score || 0);
+
+        if (!topicMap.has(topicId)) {
+          topicMap.set(topicId, {
+            topic_id: topicId,
+            topic_title: result.tests.topics?.title || 'Unknown Topic',
+            scores: [],
+            tests_taken: 0,
+          });
+        }
+
+        const topicData = topicMap.get(topicId);
+        topicData.scores.push(score);
+        topicData.tests_taken += 1;
+      });
+
+      // Calculate averages
+      return Array.from(topicMap.values()).map((topic) => ({
+        topic_id: topic.topic_id,
+        topic_title: topic.topic_title,
+        test_accuracy:
+          topic.scores.length > 0
+            ? topic.scores.reduce((sum, score) => sum + score, 0) /
+              topic.scores.length
+            : 0,
+        tests_taken: topic.tests_taken,
+        avg_test_score:
+          topic.scores.length > 0
+            ? topic.scores.reduce((sum, score) => sum + score, 0) /
+              topic.scores.length
+            : 0,
+      }));
+    } catch (error) {
+      console.error('Error getting test topic performance:', error);
+      return [];
     }
   },
 
@@ -135,7 +212,7 @@ const analyticsController = {
     }
   },
 
-  // Get topic-based analytics
+  // Get topic-based analytics with enhanced test data
   async getTopicAnalytics(req, res) {
     try {
       const userId = req.user.userId;
@@ -150,11 +227,18 @@ const analyticsController = {
       const topicAccuracyRates =
         await errorAnalyticsModel.getTopicAccuracyRates(userId);
 
+      // Get test performance by topic
+      const testTopicPerformance = await this.getTestTopicPerformance(userId);
+
       // Combine the data
       const topicAnalytics = topicTimeStats.map((topic) => {
         const accuracyData = topicAccuracyRates.find(
           (t) => t.topic_id === topic.topic_id,
         ) || { accuracy_rate: 0, correct_answers: 0, total_attempts: 0 };
+
+        const testData = testTopicPerformance.find(
+          (t) => t.topic_id === topic.topic_id,
+        ) || { test_accuracy: 0, tests_taken: 0, avg_test_score: 0 };
 
         return {
           topicId: topic.topic_id,
@@ -165,6 +249,9 @@ const analyticsController = {
           accuracyRate: parseFloat(accuracyData.accuracy_rate).toFixed(1),
           correctAnswers: parseInt(accuracyData.correct_answers) || 0,
           totalAttempts: parseInt(accuracyData.total_attempts) || 0,
+          testAccuracy: parseFloat(testData.test_accuracy).toFixed(1),
+          testsTaken: testData.tests_taken,
+          avgTestScore: parseFloat(testData.avg_test_score).toFixed(1),
         };
       });
 
@@ -221,9 +308,27 @@ const analyticsController = {
         LIMIT 5
       `;
 
+      // Add test analytics by topic
+      const testTopicQuery = `
+        SELECT 
+          t.topic_id,
+          tp.title as topic_title,
+          COUNT(DISTINCT tests.test_id) as total_tests,
+          COUNT(DISTINCT utr.result_id) as test_attempts,
+          AVG(utr.score) as avg_score
+        FROM tests t
+        LEFT JOIN topics tp ON t.topic_id = tp.topic_id
+        LEFT JOIN user_test_results utr ON t.test_id = utr.test_id
+        WHERE t.topic_id IS NOT NULL
+        GROUP BY t.topic_id, tp.title
+        ORDER BY test_attempts DESC
+        LIMIT 10
+      `;
+
       const totalActiveUsers = await db.query(activeUsersQuery);
       const totalStudyTime = await db.query(studyTimeQuery);
       const topPerformingUsers = await db.query(topUsersQuery);
+      const testTopicStats = await db.query(testTopicQuery);
 
       // Log admin activity for audit purposes
       console.log(
@@ -247,6 +352,13 @@ const analyticsController = {
           username: user.username,
           totalStudyTime: Math.round((user.total_study_time / 3600) * 10) / 10,
           accuracy: parseFloat(user.accuracy || 0).toFixed(1),
+        })),
+        testTopicStats: testTopicStats.rows.map((topic) => ({
+          topicId: topic.topic_id,
+          topicTitle: topic.topic_title || 'Unknown Topic',
+          totalTests: parseInt(topic.total_tests || 0),
+          testAttempts: parseInt(topic.test_attempts || 0),
+          avgScore: parseFloat(topic.avg_score || 0).toFixed(1),
         })),
       });
     } catch (error) {
@@ -292,26 +404,32 @@ const analyticsController = {
         userPerformance = result.rows[0];
 
         if (userPerformance) {
-          // Add topic breakdown for specific user
+          // Add topic breakdown for specific user including test performance
           const topicQuery = `
             SELECT 
               t.topic_id, t.title as topic_title,
               SUM(sd.duration) as study_duration,
               COUNT(DISTINCT ua.answer_id) as total_answers,
-              SUM(CASE WHEN ua.is_correct THEN 1 ELSE 0 END) as correct_answers
+              SUM(CASE WHEN ua.is_correct THEN 1 ELSE 0 END) as correct_answers,
+              COUNT(DISTINCT utr.result_id) as tests_taken,
+              AVG(utr.score) as avg_test_score
             FROM topics t
             LEFT JOIN subtopics st ON t.topic_id = st.topic_id
             LEFT JOIN session_details sd ON st.subtopic_id = sd.subtopic_id
-            LEFT JOIN test_questions tq ON st.subtopic_id = tq.topic_id
-            LEFT JOIN user_answers ua ON tq.question_id = ua.question_id
+            LEFT JOIN tests test ON t.topic_id = test.topic_id
+            LEFT JOIN user_test_results utr ON test.test_id = utr.test_id AND utr.user_id = $1
+            LEFT JOIN user_answers ua ON utr.result_id = ua.result_id
             WHERE sd.session_id IN (SELECT session_id FROM study_sessions WHERE user_id = $1)
-              OR ua.result_id IN (SELECT result_id FROM user_test_results WHERE user_id = $1)
+              OR utr.user_id = $1
             GROUP BY t.topic_id, t.title
-            ORDER BY study_duration DESC
+            ORDER BY study_duration DESC NULLS LAST
           `;
 
           const topicResult = await db.query(topicQuery, [userId]);
-          userPerformance.topicBreakdown = topicResult.rows;
+          userPerformance.topicBreakdown = topicResult.rows.map((topic) => ({
+            ...topic,
+            avg_test_score: parseFloat(topic.avg_test_score || 0).toFixed(1),
+          }));
         }
       } else {
         // Query for all users' performance (summary)
@@ -364,11 +482,18 @@ const analyticsController = {
       const topicAccuracyRates =
         await errorAnalyticsModel.getTopicAccuracyRates(userId);
 
+      // Get test performance by topic
+      const testTopicPerformance = await this.getTestTopicPerformance(userId);
+
       // Format data for branch performance (using topics as branches)
       const branchPerformance = topicTimeStats.map((topic) => {
         const accuracyData = topicAccuracyRates.find(
           (t) => t.topic_id === topic.topic_id,
         ) || { accuracy_rate: 0, correct_answers: 0, total_attempts: 0 };
+
+        const testData = testTopicPerformance.find(
+          (t) => t.topic_id === topic.topic_id,
+        ) || { test_accuracy: 0, tests_taken: 0, avg_test_score: 0 };
 
         return {
           branchId: topic.topic_id,
@@ -376,6 +501,9 @@ const analyticsController = {
           averageScore: parseFloat(accuracyData.accuracy_rate || 0),
           totalQuestions: parseInt(accuracyData.total_attempts || 0),
           correctAnswers: parseInt(accuracyData.correct_answers || 0),
+          testAccuracy: parseFloat(testData.test_accuracy || 0),
+          testsTaken: testData.tests_taken,
+          avgTestScore: parseFloat(testData.avg_test_score || 0),
         };
       });
 
@@ -643,7 +771,7 @@ const analyticsController = {
     }
   },
 
-  // Get detailed answer explanations for user's recent incorrect answers
+  // Get detailed answer explanations for user's recent incorrect answers with topic information
   async getAnswerExplanations(req, res) {
     try {
       const userId = req.user.userId;
@@ -652,7 +780,7 @@ const analyticsController = {
       // Initialize Supabase client
       const supabase = createClient(supabaseUrl, supabaseKey);
 
-      // Get recent incorrect answers with explanations
+      // Get recent incorrect answers with explanations including topic information
       const { data: incorrectAnswers, error } = await supabase
         .from('user_answers')
         .select(
@@ -673,8 +801,14 @@ const analyticsController = {
             tests (
               title,
               course_id,
+              topic_id,
               courses (
                 title
+              ),
+              topics (
+                topic_id,
+                title,
+                description
               )
             )
           )
@@ -703,6 +837,9 @@ const analyticsController = {
         options: answer.test_questions?.options,
         testTitle: answer.user_test_results?.tests?.title,
         courseTitle: answer.user_test_results?.tests?.courses?.title,
+        topicId: answer.user_test_results?.tests?.topic_id,
+        topicTitle: answer.user_test_results?.tests?.topics?.title,
+        topicDescription: answer.user_test_results?.tests?.topics?.description,
         answeredAt: answer.created_at,
       }));
 
@@ -719,6 +856,30 @@ const analyticsController = {
       res
         .status(500)
         .json({ message: 'Failed to retrieve answer explanations' });
+    }
+  },
+
+  // New method: Get test performance analytics by topic
+  async getTestTopicAnalytics(req, res) {
+    try {
+      const userId = req.user.userId;
+
+      // Get test performance by topic
+      const testTopicPerformance = await this.getTestTopicPerformance(userId);
+
+      // Log analytics activity
+      console.log(
+        `User ${userId} (${req.user.email}) accessed test topic analytics`,
+      );
+
+      res.json({
+        testTopicAnalytics: testTopicPerformance,
+      });
+    } catch (error) {
+      console.error('Get test topic analytics error:', error);
+      res
+        .status(500)
+        .json({ message: 'Failed to retrieve test topic analytics' });
     }
   },
 };

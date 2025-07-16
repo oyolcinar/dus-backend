@@ -8,16 +8,52 @@ const { supabaseUrl, supabaseKey } = require('../config/supabase');
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const testController = {
+  // Helper function to validate if topic exists and belongs to course
+  async validateTopic(topicId, courseId) {
+    try {
+      const { data, error } = await supabase
+        .from('topics')
+        .select('topic_id, course_id, title')
+        .eq('topic_id', topicId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      if (!data) return { exists: false, error: 'Topic not found' };
+
+      // Check if topic belongs to the specified course
+      if (courseId && data.course_id !== courseId) {
+        return {
+          exists: false,
+          error: 'Topic does not belong to the specified course',
+        };
+      }
+
+      return { exists: true, topic: data };
+    } catch (error) {
+      console.error('Error validating topic:', error);
+      throw error;
+    }
+  },
+
   // Create a new test
   async create(req, res) {
     try {
-      const { title, description, courseId, difficultyLevel, timeLimit } = req.body;
+      const {
+        title,
+        description,
+        courseId,
+        topicId,
+        difficultyLevel,
+        timeLimit,
+      } = req.body;
 
       // Validate input
       if (!title || !difficultyLevel || !courseId) {
         return res
           .status(400)
-          .json({ message: 'Title, course ID, and difficulty level are required' });
+          .json({
+            message: 'Title, course ID, and difficulty level are required',
+          });
       }
 
       // Validate difficulty level
@@ -40,6 +76,14 @@ const testController = {
         return res.status(404).json({ message: 'Course not found' });
       }
 
+      // Validate topic if provided
+      if (topicId !== undefined) {
+        const topicValidation = await this.validateTopic(topicId, courseId);
+        if (!topicValidation.exists) {
+          return res.status(404).json({ message: topicValidation.error });
+        }
+      }
+
       // Check if user has admin permissions
       if (req.user.role !== 'admin') {
         return res
@@ -47,11 +91,12 @@ const testController = {
           .json({ message: 'Only administrators can create tests' });
       }
 
-      // Create test with course_id
+      // Create test with course_id and topic_id
       const newTest = await testModel.create(
         title,
         description || null,
         courseId,
+        topicId || null,
         difficultyLevel,
         timeLimit || 30, // Default to 30 minutes if not provided
       );
@@ -69,11 +114,13 @@ const testController = {
   // Get all tests
   async getAll(req, res) {
     try {
-      const { courseId, courseType } = req.query;
+      const { courseId, topicId, courseType } = req.query;
 
       let tests;
       if (courseId) {
         tests = await testModel.getByCourseId(courseId);
+      } else if (topicId) {
+        tests = await testModel.getByTopicId(topicId);
       } else if (courseType) {
         tests = await testModel.getByCourseType(courseType);
       } else {
@@ -102,7 +149,28 @@ const testController = {
       res.json(tests);
     } catch (error) {
       console.error('Get tests by course ID error:', error);
-      res.status(500).json({ message: 'Failed to retrieve tests by course ID' });
+      res
+        .status(500)
+        .json({ message: 'Failed to retrieve tests by course ID' });
+    }
+  },
+
+  // Get tests by topic ID
+  async getByTopicId(req, res) {
+    try {
+      const topicId = parseInt(req.params.topicId);
+
+      // Validate topic exists
+      const topicValidation = await this.validateTopic(topicId);
+      if (!topicValidation.exists) {
+        return res.status(404).json({ message: topicValidation.error });
+      }
+
+      const tests = await testModel.getByTopicId(topicId);
+      res.json(tests);
+    } catch (error) {
+      console.error('Get tests by topic ID error:', error);
+      res.status(500).json({ message: 'Failed to retrieve tests by topic ID' });
     }
   },
 
@@ -113,8 +181,9 @@ const testController = {
 
       // Validate course type
       if (!['temel_dersler', 'klinik_dersler'].includes(courseType)) {
-        return res.status(400).json({ 
-          message: 'Course type must be either "temel_dersler" or "klinik_dersler"' 
+        return res.status(400).json({
+          message:
+            'Course type must be either "temel_dersler" or "klinik_dersler"',
         });
       }
 
@@ -122,7 +191,9 @@ const testController = {
       res.json(tests);
     } catch (error) {
       console.error('Get tests by course type error:', error);
-      res.status(500).json({ message: 'Failed to retrieve tests by course type' });
+      res
+        .status(500)
+        .json({ message: 'Failed to retrieve tests by course type' });
     }
   },
 
@@ -166,7 +237,14 @@ const testController = {
   async update(req, res) {
     try {
       const testId = req.params.id;
-      const { title, description, courseId, difficultyLevel, timeLimit } = req.body;
+      const {
+        title,
+        description,
+        courseId,
+        topicId,
+        difficultyLevel,
+        timeLimit,
+      } = req.body;
 
       // Check if test exists
       const existingTest = await testModel.getById(testId);
@@ -186,6 +264,22 @@ const testController = {
         const course = await courseModel.getById(courseId);
         if (!course) {
           return res.status(404).json({ message: 'Course not found' });
+        }
+      }
+
+      // Validate topic if provided
+      if (topicId !== undefined) {
+        // If topicId is null, it's allowed (removing topic association)
+        if (topicId !== null) {
+          const finalCourseId =
+            courseId !== undefined ? courseId : existingTest.course_id;
+          const topicValidation = await this.validateTopic(
+            topicId,
+            finalCourseId,
+          );
+          if (!topicValidation.exists) {
+            return res.status(404).json({ message: topicValidation.error });
+          }
         }
       }
 
@@ -212,6 +306,7 @@ const testController = {
         title,
         description,
         courseId,
+        topicId,
         difficultyLevel,
         timeLimit,
       );
@@ -238,12 +333,13 @@ const testController = {
       }
 
       const stats = await testModel.getTestStats(testId);
-      
+
       res.json({
         test: {
           testId: test.test_id,
           title: test.title,
           course: test.courses,
+          topic: test.topics,
         },
         statistics: stats,
       });
@@ -266,7 +362,7 @@ const testController = {
       }
 
       const history = await testModel.hasUserTakenTest(userId, testId);
-      
+
       res.json({
         testId,
         userId,

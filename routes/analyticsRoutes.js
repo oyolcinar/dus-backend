@@ -1,4 +1,4 @@
-// routes/analyticsRoutes.js - Complete with answer explanations
+// routes/analyticsRoutes.js - Complete with enhanced topic support and answer explanations
 
 const express = require('express');
 const router = express.Router();
@@ -11,7 +11,7 @@ const { authorize, authorizePermission } = require('../middleware/authorize');
  * @swagger
  * tags:
  *   name: Analytics
- *   description: User learning analytics
+ *   description: User learning analytics with enhanced topic support
  */
 
 /**
@@ -24,7 +24,7 @@ const { authorize, authorizePermission } = require('../middleware/authorize');
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: User dashboard analytics
+ *         description: User dashboard analytics with enhanced topic data
  *         content:
  *           application/json:
  *             schema:
@@ -55,7 +55,33 @@ const { authorize, authorizePermission } = require('../middleware/authorize');
  *                   description: Topics with highest error rates
  *                 topicAnalytics:
  *                   type: array
- *                   description: Top 5 most studied topics with analytics
+ *                   description: Top 5 most studied topics with analytics including test performance
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       topicId:
+ *                         type: integer
+ *                       topicTitle:
+ *                         type: string
+ *                       totalDuration:
+ *                         type: integer
+ *                       totalDurationHours:
+ *                         type: number
+ *                       accuracyRate:
+ *                         type: string
+ *                       correctAnswers:
+ *                         type: integer
+ *                       totalAttempts:
+ *                         type: integer
+ *                       testAccuracy:
+ *                         type: string
+ *                         description: Test-specific accuracy rate
+ *                       testsTaken:
+ *                         type: integer
+ *                         description: Number of tests taken for this topic
+ *                       avgTestScore:
+ *                         type: string
+ *                         description: Average test score for this topic
  *       401:
  *         description: Unauthorized
  */
@@ -104,13 +130,13 @@ router.get(
  * @swagger
  * /api/analytics/topics:
  *   get:
- *     summary: Get topic-based analytics
+ *     summary: Get topic-based analytics with enhanced test data
  *     tags: [Analytics]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Topic-based analytics
+ *         description: Topic-based analytics including test performance
  *         content:
  *           application/json:
  *             schema:
@@ -135,6 +161,15 @@ router.get(
  *                         type: integer
  *                       totalAttempts:
  *                         type: integer
+ *                       testAccuracy:
+ *                         type: string
+ *                         description: Test-specific accuracy rate
+ *                       testsTaken:
+ *                         type: integer
+ *                         description: Number of tests taken for this topic
+ *                       avgTestScore:
+ *                         type: string
+ *                         description: Average test score for this topic
  *       401:
  *         description: Unauthorized
  */
@@ -142,15 +177,58 @@ router.get('/topics', authSupabase, analyticsController.getTopicAnalytics);
 
 /**
  * @swagger
- * /api/analytics/user-performance:
+ * /api/analytics/test-topics:
  *   get:
- *     summary: Get user performance analytics
+ *     summary: Get test performance analytics specifically by topic
  *     tags: [Analytics]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: User performance analytics
+ *         description: Test performance analytics by topic
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 testTopicAnalytics:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       topic_id:
+ *                         type: integer
+ *                       topic_title:
+ *                         type: string
+ *                       test_accuracy:
+ *                         type: number
+ *                         description: Average test accuracy for this topic
+ *                       tests_taken:
+ *                         type: integer
+ *                         description: Number of tests taken for this topic
+ *                       avg_test_score:
+ *                         type: number
+ *                         description: Average test score for this topic
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+  '/test-topics',
+  authSupabase,
+  analyticsController.getTestTopicAnalytics,
+);
+
+/**
+ * @swagger
+ * /api/analytics/user-performance:
+ *   get:
+ *     summary: Get user performance analytics with enhanced test data
+ *     tags: [Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User performance analytics including test performance by topic
  *         content:
  *           application/json:
  *             schema:
@@ -171,6 +249,15 @@ router.get('/topics', authSupabase, analyticsController.getTopicAnalytics);
  *                         type: integer
  *                       correctAnswers:
  *                         type: integer
+ *                       testAccuracy:
+ *                         type: number
+ *                         description: Test-specific accuracy
+ *                       testsTaken:
+ *                         type: integer
+ *                         description: Number of tests taken
+ *                       avgTestScore:
+ *                         type: number
+ *                         description: Average test score
  *                 totalQuestionsAnswered:
  *                   type: integer
  *                 overallAccuracy:
@@ -366,7 +453,7 @@ router.get(
  * @swagger
  * /api/analytics/answer-explanations:
  *   get:
- *     summary: Get recent incorrect answers with explanations for learning insights
+ *     summary: Get recent incorrect answers with explanations and topic information for learning insights
  *     tags: [Analytics]
  *     security:
  *       - bearerAuth: []
@@ -379,7 +466,7 @@ router.get(
  *         description: Maximum number of answers to return
  *     responses:
  *       200:
- *         description: Recent incorrect answers with explanations
+ *         description: Recent incorrect answers with explanations including topic information
  *         content:
  *           application/json:
  *             schema:
@@ -408,6 +495,15 @@ router.get(
  *                         type: string
  *                       courseTitle:
  *                         type: string
+ *                       topicId:
+ *                         type: integer
+ *                         description: ID of the topic this question belongs to
+ *                       topicTitle:
+ *                         type: string
+ *                         description: Title of the topic this question belongs to
+ *                       topicDescription:
+ *                         type: string
+ *                         description: Description of the topic this question belongs to
  *                       answeredAt:
  *                         type: string
  *                         format: date-time
@@ -425,13 +521,13 @@ router.get(
  * @swagger
  * /api/analytics/admin/overview:
  *   get:
- *     summary: Get admin analytics overview (admin only)
+ *     summary: Get admin analytics overview with enhanced topic test data (admin only)
  *     tags: [Analytics]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Admin analytics overview
+ *         description: Admin analytics overview including test topic statistics
  *         content:
  *           application/json:
  *             schema:
@@ -466,6 +562,25 @@ router.get(
  *                         type: number
  *                       accuracy:
  *                         type: string
+ *                 testTopicStats:
+ *                   type: array
+ *                   description: Test statistics by topic
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       topicId:
+ *                         type: integer
+ *                       topicTitle:
+ *                         type: string
+ *                       totalTests:
+ *                         type: integer
+ *                         description: Number of tests available for this topic
+ *                       testAttempts:
+ *                         type: integer
+ *                         description: Total test attempts for this topic
+ *                       avgScore:
+ *                         type: string
+ *                         description: Average score across all users for this topic
  *       401:
  *         description: Unauthorized
  *       403:
@@ -482,7 +597,7 @@ router.get(
  * @swagger
  * /api/analytics/admin/user-performance:
  *   get:
- *     summary: Get user performance analytics (admin/instructor only)
+ *     summary: Get user performance analytics with enhanced topic test data (admin/instructor only)
  *     tags: [Analytics]
  *     security:
  *       - bearerAuth: []
@@ -494,7 +609,7 @@ router.get(
  *         description: Optional user ID to filter by specific user
  *     responses:
  *       200:
- *         description: User performance analytics
+ *         description: User performance analytics including topic test breakdown
  *         content:
  *           application/json:
  *             schema:
@@ -525,8 +640,24 @@ router.get(
  *                           type: number
  *                         topicBreakdown:
  *                           type: array
+ *                           description: Topic breakdown including test performance
  *                           items:
  *                             type: object
+ *                             properties:
+ *                               topic_id:
+ *                                 type: integer
+ *                               topic_title:
+ *                                 type: string
+ *                               study_duration:
+ *                                 type: integer
+ *                               total_answers:
+ *                                 type: integer
+ *                               correct_answers:
+ *                                 type: integer
+ *                               tests_taken:
+ *                                 type: integer
+ *                               avg_test_score:
+ *                                 type: string
  *                     - type: array
  *                       description: All users performance (when no userId provided)
  *                       items:
