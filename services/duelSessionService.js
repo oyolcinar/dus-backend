@@ -57,10 +57,14 @@ const duelSessionService = {
         throw new Error('Duel or test not found');
       }
 
-      // Get questions from the test
+      // Get questions from the test with explicit field selection
+      // Note: options will be in format {"A": "answer1", "B": "answer2", ...}
+      // and explanation field is now included
       const { data: questions, error } = await supabase
         .from('test_questions')
-        .select('*')
+        .select(
+          'question_id, test_id, question_text, options, correct_answer, explanation, created_at',
+        )
         .eq('test_id', duel.test_id)
         .order('question_id');
 
@@ -158,7 +162,7 @@ const duelSessionService = {
           is_correct,
           answer_time_ms,
           question_id,
-          test_questions(correct_answer, question_text, options)
+          test_questions(correct_answer, question_text, options, explanation)
         `,
         )
         .eq('session_id', sessionId)
@@ -172,8 +176,9 @@ const duelSessionService = {
         questionIndex,
         question: {
           text: question?.question_text,
-          options: question?.options,
+          options: question?.options, // This will be in format {"A": "answer1", "B": "answer2", ...}
           correctAnswer: question?.correct_answer,
+          explanation: question?.explanation, // Now includes explanation
         },
         answers: answers.map((a) => ({
           userId: a.user_id,
@@ -435,6 +440,27 @@ const duelSessionService = {
       }
     } catch (error) {
       console.error('Error updating user stats:', error);
+      throw error;
+    }
+  },
+
+  // Get session with questions for debugging/admin purposes
+  async getSessionWithQuestions(sessionId) {
+    try {
+      const { data: session, error } = await supabase
+        .from('duel_sessions')
+        .select('*')
+        .eq('session_id', sessionId)
+        .single();
+
+      if (error) throw error;
+
+      return {
+        ...session,
+        questions: session.questions || [], // Questions will be in new format with explanation
+      };
+    } catch (error) {
+      console.error('Error getting session with questions:', error);
       throw error;
     }
   },

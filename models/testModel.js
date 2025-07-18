@@ -250,9 +250,13 @@ const testModel = {
       if (!test) return null;
 
       // Then get questions for this test
+      // Note: options will be in format {"A": "answer1", "B": "answer2", ...}
+      // and explanation field is now included
       const { data: questions, error } = await supabase
         .from('test_questions')
-        .select('*')
+        .select(
+          'question_id, test_id, question_text, options, correct_answer, explanation, created_at',
+        )
         .eq('test_id', testId)
         .order('question_id', { ascending: true });
 
@@ -346,6 +350,63 @@ const testModel = {
       return data;
     } catch (error) {
       console.error('Error deleting test:', error);
+      throw error;
+    }
+  },
+
+  // Get questions for a test (lightweight version without full test data)
+  async getQuestions(testId) {
+    try {
+      const { data: questions, error } = await supabase
+        .from('test_questions')
+        .select(
+          'question_id, test_id, question_text, options, correct_answer, explanation, created_at',
+        )
+        .eq('test_id', testId)
+        .order('question_id', { ascending: true });
+
+      if (error) throw error;
+      return questions || [];
+    } catch (error) {
+      console.error('Error getting questions for test:', error);
+      throw error;
+    }
+  },
+
+  // Get random questions for a test (useful for practice mode)
+  async getRandomQuestions(testId, limit = 10) {
+    try {
+      // Get total question count first
+      const { data: allQuestions, error: countError } = await supabase
+        .from('test_questions')
+        .select('question_id')
+        .eq('test_id', testId);
+
+      if (countError) throw countError;
+
+      if (allQuestions.length === 0) {
+        return [];
+      }
+
+      // If we have fewer questions than the limit, return all
+      if (allQuestions.length <= limit) {
+        return this.getQuestions(testId);
+      }
+
+      // Get random questions using PostgreSQL's TABLESAMPLE or ORDER BY RANDOM()
+      const { data: questions, error } = await supabase
+        .from('test_questions')
+        .select(
+          'question_id, test_id, question_text, options, correct_answer, explanation, created_at',
+        )
+        .eq('test_id', testId)
+        .order('random()')
+        .limit(limit);
+
+      if (error) throw error;
+      return questions || [];
+    } catch (error) {
+      console.error('Error getting random questions for test:', error);
       throw error;
     }
   },

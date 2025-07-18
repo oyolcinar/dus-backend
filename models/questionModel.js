@@ -8,7 +8,13 @@ const supabase = createClient(
 
 const questionModel = {
   // Create a new question
-  async create(testId, questionText, options, correctAnswer) {
+  async create(
+    testId,
+    questionText,
+    options,
+    correctAnswer,
+    explanation = null,
+  ) {
     try {
       // Start a transaction by using a single batch operation
       // First insert the question
@@ -17,11 +23,12 @@ const questionModel = {
         .insert({
           test_id: testId,
           question_text: questionText,
-          options: options,
+          options: options, // This should be in format {"A": "answer1", "B": "answer2", ...}
           correct_answer: correctAnswer,
+          explanation: explanation,
         })
         .select(
-          'question_id, test_id, question_text, options, correct_answer, created_at',
+          'question_id, test_id, question_text, options, correct_answer, explanation, created_at',
         )
         .single();
 
@@ -43,7 +50,7 @@ const questionModel = {
       const { data, error } = await supabase
         .from('test_questions')
         .select(
-          'question_id, test_id, question_text, options, correct_answer, created_at',
+          'question_id, test_id, question_text, options, correct_answer, explanation, created_at',
         )
         .eq('test_id', testId)
         .order('question_id', { ascending: true });
@@ -61,7 +68,7 @@ const questionModel = {
       const { data, error } = await supabase
         .from('test_questions')
         .select(
-          'question_id, test_id, question_text, options, correct_answer, created_at',
+          'question_id, test_id, question_text, options, correct_answer, explanation, created_at',
         )
         .eq('question_id', questionId)
         .single();
@@ -79,18 +86,28 @@ const questionModel = {
   },
 
   // Update question
-  async update(questionId, questionText, options, correctAnswer) {
+  async update(
+    questionId,
+    questionText,
+    options,
+    correctAnswer,
+    explanation = null,
+  ) {
     try {
+      const updateData = {};
+
+      if (questionText !== undefined) updateData.question_text = questionText;
+      if (options !== undefined) updateData.options = options; // Should be in format {"A": "answer1", "B": "answer2", ...}
+      if (correctAnswer !== undefined)
+        updateData.correct_answer = correctAnswer;
+      if (explanation !== undefined) updateData.explanation = explanation;
+
       const { data, error } = await supabase
         .from('test_questions')
-        .update({
-          question_text: questionText,
-          options: options,
-          correct_answer: correctAnswer,
-        })
+        .update(updateData)
         .eq('question_id', questionId)
         .select(
-          'question_id, test_id, question_text, options, correct_answer, created_at',
+          'question_id, test_id, question_text, options, correct_answer, explanation, created_at',
         )
         .single();
       if (error) throw error;
@@ -119,6 +136,83 @@ const questionModel = {
       return data;
     } catch (error) {
       console.error('Error deleting question:', error);
+      throw error;
+    }
+  },
+
+  // Batch create questions (useful for importing questions)
+  async createBatch(questions) {
+    try {
+      const formattedQuestions = questions.map((q) => ({
+        test_id: q.testId,
+        question_text: q.questionText,
+        options: q.options, // Should be in format {"A": "answer1", "B": "answer2", ...}
+        correct_answer: q.correctAnswer,
+        explanation: q.explanation || null,
+      }));
+
+      const { data, error } = await supabase
+        .from('test_questions')
+        .insert(formattedQuestions)
+        .select(
+          'question_id, test_id, question_text, options, correct_answer, explanation, created_at',
+        );
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error batch creating questions:', error);
+      throw error;
+    }
+  },
+
+  // Get questions with pagination
+  async getByTestIdWithPagination(testId, page = 1, limit = 10) {
+    try {
+      const offset = (page - 1) * limit;
+
+      const { data, error, count } = await supabase
+        .from('test_questions')
+        .select(
+          'question_id, test_id, question_text, options, correct_answer, explanation, created_at',
+          { count: 'exact' },
+        )
+        .eq('test_id', testId)
+        .order('question_id', { ascending: true })
+        .range(offset, offset + limit - 1);
+
+      if (error) throw error;
+
+      return {
+        data,
+        pagination: {
+          page,
+          limit,
+          total: count,
+          totalPages: Math.ceil(count / limit),
+        },
+      };
+    } catch (error) {
+      console.error('Error getting questions with pagination:', error);
+      throw error;
+    }
+  },
+
+  // Update question explanation only
+  async updateExplanation(questionId, explanation) {
+    try {
+      const { data, error } = await supabase
+        .from('test_questions')
+        .update({ explanation })
+        .eq('question_id', questionId)
+        .select(
+          'question_id, test_id, question_text, options, correct_answer, explanation, created_at',
+        )
+        .single();
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating question explanation:', error);
       throw error;
     }
   },

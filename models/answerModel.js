@@ -84,7 +84,8 @@ const answerModel = {
           test_questions (
             question_text,
             options,
-            correct_answer
+            correct_answer,
+            explanation
           )
         `,
         )
@@ -103,8 +104,10 @@ const answerModel = {
         answer_definition: answer.answer_definition,
         created_at: answer.created_at,
         question_text: answer.test_questions?.question_text,
-        options: answer.test_questions?.options,
+        options: answer.test_questions?.options, // This will be in new {"A": "answer1", "B": "answer2"} format
         correct_answer: answer.test_questions?.correct_answer,
+        explanation:
+          answer.test_questions?.explanation || answer.answer_definition, // Prefer test_questions.explanation
       }));
     } catch (error) {
       console.error('Error getting answers by result ID:', error);
@@ -162,7 +165,8 @@ const answerModel = {
             question_id,
             question_text,
             correct_answer,
-            options
+            options,
+            explanation
           ),
           user_test_results!inner (
             user_id,
@@ -179,7 +183,6 @@ const answerModel = {
         )
         .eq('is_correct', false)
         .eq('user_test_results.user_id', userId)
-        .not('answer_definition', 'is', null)
         .order('created_at', { ascending: false })
         .limit(limit);
 
@@ -189,9 +192,10 @@ const answerModel = {
         answer_id: answer.answer_id,
         user_answer: answer.user_answer,
         correct_answer: answer.test_questions?.correct_answer,
-        explanation: answer.answer_definition,
+        explanation:
+          answer.test_questions?.explanation || answer.answer_definition, // Prefer test_questions.explanation
         question_text: answer.test_questions?.question_text,
-        question_options: answer.test_questions?.options,
+        question_options: answer.test_questions?.options, // This will be in new {"A": "answer1", "B": "answer2"} format
         test_title: answer.user_test_results?.tests?.title,
         course_title: answer.user_test_results?.tests?.courses?.title,
         answered_at: answer.created_at,
@@ -240,7 +244,8 @@ const answerModel = {
           test_questions (
             question_text,
             correct_answer,
-            options
+            options,
+            explanation
           ),
           user_test_results!inner (
             user_id,
@@ -256,13 +261,26 @@ const answerModel = {
         `,
         )
         .eq('user_test_results.user_id', userId)
-        .not('answer_definition', 'is', null)
         .gte('created_at', startDate)
         .lte('created_at', endDate)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data;
+
+      return data.map((answer) => ({
+        answer_id: answer.answer_id,
+        user_answer: answer.user_answer,
+        is_correct: answer.is_correct,
+        answer_definition: answer.answer_definition,
+        created_at: answer.created_at,
+        question_text: answer.test_questions?.question_text,
+        correct_answer: answer.test_questions?.correct_answer,
+        options: answer.test_questions?.options, // This will be in new {"A": "answer1", "B": "answer2"} format
+        explanation:
+          answer.test_questions?.explanation || answer.answer_definition, // Prefer test_questions.explanation
+        test_title: answer.user_test_results?.tests?.title,
+        course_title: answer.user_test_results?.tests?.courses?.title,
+      }));
     } catch (error) {
       console.error(
         'Error getting answers with explanations by date range:',
@@ -282,6 +300,9 @@ const answerModel = {
           answer_id,
           is_correct,
           answer_definition,
+          test_questions (
+            explanation
+          ),
           user_test_results!inner (
             user_id
           )
@@ -293,13 +314,19 @@ const answerModel = {
 
       const stats = {
         totalAnswers: data.length,
-        totalWithExplanations: data.filter((answer) => answer.answer_definition)
-          .length,
+        totalWithExplanations: data.filter(
+          (answer) =>
+            answer.test_questions?.explanation || answer.answer_definition,
+        ).length,
         correctAnswersWithExplanations: data.filter(
-          (answer) => answer.is_correct && answer.answer_definition,
+          (answer) =>
+            answer.is_correct &&
+            (answer.test_questions?.explanation || answer.answer_definition),
         ).length,
         incorrectAnswersWithExplanations: data.filter(
-          (answer) => !answer.is_correct && answer.answer_definition,
+          (answer) =>
+            !answer.is_correct &&
+            (answer.test_questions?.explanation || answer.answer_definition),
         ).length,
       };
 

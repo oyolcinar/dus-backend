@@ -794,7 +794,8 @@ const analyticsController = {
             question_id,
             question_text,
             correct_answer,
-            options
+            options,
+            explanation
           ),
           user_test_results (
             test_id,
@@ -815,7 +816,6 @@ const analyticsController = {
         `,
         )
         .eq('is_correct', false)
-        .not('answer_definition', 'is', null)
         .in(
           'result_id',
           supabase
@@ -828,20 +828,28 @@ const analyticsController = {
 
       if (error) throw error;
 
-      const formattedAnswers = incorrectAnswers.map((answer) => ({
-        answerId: answer.answer_id,
-        questionText: answer.test_questions?.question_text,
-        userAnswer: answer.user_answer,
-        correctAnswer: answer.test_questions?.correct_answer,
-        explanation: answer.answer_definition,
-        options: answer.test_questions?.options,
-        testTitle: answer.user_test_results?.tests?.title,
-        courseTitle: answer.user_test_results?.tests?.courses?.title,
-        topicId: answer.user_test_results?.tests?.topic_id,
-        topicTitle: answer.user_test_results?.tests?.topics?.title,
-        topicDescription: answer.user_test_results?.tests?.topics?.description,
-        answeredAt: answer.created_at,
-      }));
+      const formattedAnswers = incorrectAnswers.map((answer) => {
+        // Handle the new options format - keep original structure for frontend
+        const options = answer.test_questions?.options || {};
+
+        return {
+          answerId: answer.answer_id,
+          questionText: answer.test_questions?.question_text,
+          userAnswer: answer.user_answer,
+          correctAnswer: answer.test_questions?.correct_answer,
+          // Use explanation from test_questions if available, otherwise fall back to answer_definition
+          explanation:
+            answer.test_questions?.explanation || answer.answer_definition,
+          options: options, // This will be in the new {"A": "answer1", "B": "answer2"} format
+          testTitle: answer.user_test_results?.tests?.title,
+          courseTitle: answer.user_test_results?.tests?.courses?.title,
+          topicId: answer.user_test_results?.tests?.topic_id,
+          topicTitle: answer.user_test_results?.tests?.topics?.title,
+          topicDescription:
+            answer.user_test_results?.tests?.topics?.description,
+          answeredAt: answer.created_at,
+        };
+      });
 
       // Log analytics activity
       console.log(
