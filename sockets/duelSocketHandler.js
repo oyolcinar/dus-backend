@@ -1,27 +1,105 @@
 // sockets/duelSocketHandler.js
-const jwt = require('jsonwebtoken');
+const { supabaseUrl, supabaseKey } = require('../config/supabase');
+const { createClient } = require('@supabase/supabase-js');
+const db = require('../config/db');
 const duelSessionService = require('../services/duelSessionService');
 const botService = require('../services/botService');
+
+// Create Supabase client using your existing config
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 // In-memory store for active duel sessions (use Redis in production)
 const activeSessions = new Map();
 const userSockets = new Map(); // userId -> socketId
 
 const setupDuelSockets = (io) => {
-  // Middleware for socket authentication
-  io.use((socket, next) => {
-    const token = socket.handshake.auth.token;
-    if (!token) {
-      return next(new Error('Authentication error'));
-    }
-
+  // Enhanced middleware for socket authentication using your existing Supabase logic
+  io.use(async (socket, next) => {
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      socket.userId = decoded.userId;
-      socket.username = decoded.username;
-      next();
-    } catch (err) {
-      next(new Error('Authentication error'));
+      console.log('🔧 Socket Auth: Starting authentication...');
+
+      // Get the token from the socket handshake (same as your HTTP middleware)
+      const token = socket.handshake.auth.token;
+
+      if (!token) {
+        console.log('🔧 Socket Auth: No token provided');
+        return next(new Error('Authentication error: No token provided'));
+      }
+
+      console.log('🔧 Socket Auth: Token received, verifying with Supabase...');
+
+      // Verify the token with Supabase (exactly like your authSupabase.js middleware)
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser(token);
+
+      if (error || !user) {
+        console.log(
+          '🔧 Socket Auth: Supabase verification failed:',
+          error?.message || 'No user',
+        );
+        return next(new Error('Authentication error: Invalid token'));
+      }
+
+      console.log(
+        '🔧 Socket Auth: Supabase token verified for user:',
+        user.email,
+      );
+
+      // Get the user from your database using auth_id (exactly like your middleware)
+      const query = `
+        SELECT user_id, username, email, role, subscription_type 
+        FROM users 
+        WHERE auth_id = $1
+      `;
+
+      try {
+        const result = await db.query(query, [user.id]);
+        const dbUser = result.rows[0];
+
+        if (!dbUser) {
+          console.log(
+            '🔧 Socket Auth: User not found in database for auth_id:',
+            user.id,
+          );
+          return next(
+            new Error('Authentication error: User account not found'),
+          );
+        }
+
+        console.log('🔧 Socket Auth: Database user found:', {
+          userId: dbUser.user_id,
+          username: dbUser.username,
+          email: dbUser.email,
+        });
+
+        // Attach the user information to the socket (same structure as your HTTP middleware)
+        socket.userId = dbUser.user_id;
+        socket.username = dbUser.username;
+        socket.email = dbUser.email;
+        socket.role = dbUser.role;
+        socket.subscriptionType = dbUser.subscription_type;
+        socket.authId = user.id;
+
+        console.log(
+          '🔧 Socket Auth: Authentication successful for user:',
+          socket.username,
+        );
+        next();
+      } catch (dbError) {
+        console.error(
+          '🔧 Socket Auth: Database error during authentication:',
+          dbError,
+        );
+        return next(new Error('Authentication error: Database error'));
+      }
+    } catch (error) {
+      console.error(
+        '🔧 Socket Auth: Unexpected error during authentication:',
+        error,
+      );
+      return next(new Error('Authentication error: Unexpected error'));
     }
   });
 
@@ -39,6 +117,10 @@ const setupDuelSockets = (io) => {
         const { duelId } = data;
         const roomName = `duel_${duelId}`;
 
+        console.log(
+          `🔧 Socket: User ${socket.username} (${socket.userId}) joining duel ${duelId}`,
+        );
+
         // Verify user is part of this duel
         const duel = await duelSessionService.getDuelById(duelId);
         if (
@@ -46,6 +128,9 @@ const setupDuelSockets = (io) => {
           (duel.initiator_id !== socket.userId &&
             duel.opponent_id !== socket.userId)
         ) {
+          console.log(
+            `🔧 Socket: User ${socket.userId} unauthorized for duel ${duelId}`,
+          );
           socket.emit('room_error', {
             message: 'Unauthorized to join this duel',
           });
@@ -54,6 +139,9 @@ const setupDuelSockets = (io) => {
 
         // Check if duel is active
         if (duel.status !== 'active') {
+          console.log(
+            `🔧 Socket: Duel ${duelId} is not active (status: ${duel.status})`,
+          );
           socket.emit('room_error', { message: 'Duel is not active' });
           return;
         }
@@ -67,6 +155,7 @@ const setupDuelSockets = (io) => {
         if (!session) {
           session = await duelSessionService.createSession(duel);
           activeSessions.set(duelId, session);
+          console.log(`🔧 Socket: Created new session for duel ${duelId}`);
         }
 
         // Add user to session
@@ -76,6 +165,10 @@ const setupDuelSockets = (io) => {
           ready: false,
           connectedAt: new Date(),
         });
+
+        console.log(
+          `🔧 Socket: User ${socket.username} joined session for duel ${duelId}`,
+        );
 
         socket.emit('room_joined', {
           session: {
@@ -101,11 +194,15 @@ const setupDuelSockets = (io) => {
           io.to(opponentSocketId).emit('opponent_joined', {
             username: socket.username,
           });
+          console.log(
+            `🔧 Socket: Notified opponent ${opponentId} that ${socket.username} joined`,
+          );
         }
 
         // If both users are connected, check if we can start
         if (session.connectedUsers.size === 2) {
           io.to(roomName).emit('both_players_connected');
+          console.log(`🔧 Socket: Both players connected for duel ${duelId}`);
         }
       } catch (error) {
         console.error('Error joining duel room:', error);
