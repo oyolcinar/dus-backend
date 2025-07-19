@@ -186,6 +186,7 @@ const analyticsRoutes = require('./routes/analyticsRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const duelRoutes = require('./routes/duelRoutes');
 const duelResultRoutes = require('./routes/duelResultRoutes');
+const botRoutes = require('./routes/botRoutes');
 
 // Mount routes (like in your old app.js)
 app.use('/api/auth', authRoutes);
@@ -208,6 +209,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/duels', duelRoutes);
 app.use('/api/duel-results', duelResultRoutes);
+app.use('/api/bots', botRoutes);
 
 console.log('✅ All routes loaded successfully using simple approach');
 
