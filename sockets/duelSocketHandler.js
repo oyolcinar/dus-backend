@@ -830,96 +830,64 @@ async function checkAndProcessRoundResult(duelId, session, io) {
 }
 
 // FIXED: Enhanced function to process round results with better error handling
+// A new, cleaner, and correct implementation of processRoundResult
 async function processRoundResult(duelId, session, io) {
   try {
     const roomName = `duel_${duelId}`;
 
-    // Get results for this round
+    // 1. GET AND SEND RESULTS for the round that just finished.
     const roundResults = await duelSessionService.getRoundResults(
       session.sessionId,
       session.currentQuestionIndex,
     );
 
-    console.log(`📊 Sending round results for duel ${duelId}:`, {
-      questionIndex: roundResults.questionIndex,
-      correctAnswer: roundResults.question.correctAnswer,
-      answers: roundResults.answers.map((a) => ({
-        userId: a.userId,
-        isCorrect: a.isCorrect,
-        selectedAnswer: a.selectedAnswer,
-      })),
-    });
-
-    // Send round results to both players
+    console.log(
+      `📊 Sending round results for duel ${duelId}, question index ${session.currentQuestionIndex}`,
+    );
     io.to(roomName).emit('round_result', roundResults);
 
-    // Move to next question or end duel
-    if (session.currentQuestionIndex + 1 < session.questions.length) {
-      // Next question
+    // 2. ATOMICALLY ADVANCE THE STATE for the next round.
+    session.currentQuestionIndex += 1;
+    activeSessions.set(duelId, session);
+
+    // 3. DECIDE what to do based on the NEW state.
+    const isDuelOver = session.currentQuestionIndex >= session.questions.length;
+
+    if (isDuelOver) {
+      // --- PATH A: Duel is over ---
+      console.log(
+        `✅ All questions answered. Completing duel ${duelId} in 3s.`,
+      );
+      setTimeout(async () => {
+        await completeDuel(duelId, roomName, io);
+      }, 3000);
+    } else {
+      // --- PATH B: More questions to go ---
+      console.log(
+        `⏳ Scheduling next question (${session.currentQuestionIndex}) for duel ${duelId} in 3s`,
+      );
       setTimeout(async () => {
         const currentSession = activeSessions.get(duelId);
         if (currentSession) {
-          currentSession.currentQuestionIndex += 1;
-          activeSessions.set(duelId, currentSession);
-
-          // FIXED: Reset processing state for next question
-          const processingInfo = roundProcessingState.get(duelId);
-          if (processingInfo) {
-            processingInfo.processing = false;
-            processingInfo.lastProcessedIndex =
-              currentSession.currentQuestionIndex - 1;
-            roundProcessingState.set(duelId, processingInfo);
-          }
-
-          // Reset bot session state for next question
-          const botSessionInfo = botSessions.get(duelId);
-          if (botSessionInfo) {
-            // Cancel any pending bot timeout
-            if (botSessionInfo.botTimeout) {
-              clearTimeout(botSessionInfo.botTimeout);
-              delete botSessionInfo.botTimeout;
-            }
-            botSessionInfo.processingRound = false;
-            botSessions.set(duelId, botSessionInfo);
-          }
-
-          // Get duel info for bot handling
+          // Get duel and bot info for the next question
           const duel = await duelSessionService.getDuelById(duelId);
           const isInitiatorBot = await botService.isBot(duel.initiator_id);
           const isOpponentBot = await botService.isBot(duel.opponent_id);
 
+          // Present the next question
           await presentNextQuestion(duelId, roomName, io, {
             isInitiatorBot,
             isOpponentBot,
             duel,
           });
         }
-      }, 3000); // 3-second delay before next question
-    } else {
-      // Duel completed
-      setTimeout(async () => {
-        await completeDuel(duelId, roomName, io);
       }, 3000);
     }
   } catch (error) {
     console.error('Error processing round result:', error);
-    // FIXED: Reset processing state on error and try to continue
-    const processingInfo = roundProcessingState.get(duelId);
-    const botSessionInfo = botSessions.get(duelId);
-
-    if (processingInfo) {
-      processingInfo.processing = false;
-      roundProcessingState.set(duelId, processingInfo);
-    }
-
-    if (botSessionInfo) {
-      botSessionInfo.processingRound = false;
-      botSessions.set(duelId, botSessionInfo);
-    }
-
     const roomName = `duel_${duelId}`;
     io.to(roomName).emit('room_error', {
-      message: 'Error processing round result',
+      message: 'Error processing round result.',
     });
   }
 }
