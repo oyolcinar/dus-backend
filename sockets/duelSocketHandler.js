@@ -1,4 +1,4 @@
-// sockets/duelSocketHandler.js - FIXED VERSION with proper bot game logic
+// sockets/duelSocketHandler.js - FIXED VERSION with better state management
 
 const { supabaseUrl, supabaseKey } = require('../config/supabase');
 const { createClient } = require('@supabase/supabase-js');
@@ -13,6 +13,9 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const activeSessions = new Map();
 const userSockets = new Map(); // userId -> socketId
 const botSessions = new Map(); // duelId -> bot session info
+
+// FIXED: Add better tracking for round processing
+const roundProcessingState = new Map(); // duelId -> processing info
 
 const setupDuelSockets = (io) => {
   // Enhanced middleware for socket authentication using your existing Supabase logic
@@ -203,16 +206,16 @@ const setupDuelSockets = (io) => {
         if (isOpponentBot) {
           console.log('🤖 Bot game detected, initializing bot behavior...');
 
-          // Store bot session info
+          // FIXED: Better bot session initialization
           botSessions.set(duelId, {
             botUserId: opponentId,
             humanUserId: socket.userId,
             humanSocketId: socket.id,
             botAnswered: false,
             humanAnswered: false,
-            currentQuestionIndex: 0,
-            // FIXED: Add pending operations tracking
-            pendingRoundResult: false,
+            currentQuestionIndex: -1, // Start at -1 to track first question properly
+            processingRound: false,
+            lastQuestionId: null,
           });
 
           // Handle bot joining room
@@ -353,7 +356,7 @@ const setupDuelSockets = (io) => {
       }
     });
 
-    // FIXED: Enhanced submit answer with proper bot handling
+    // FIXED: Enhanced submit answer with better duplicate prevention
     socket.on('submit_answer', async (data) => {
       try {
         const { questionId, selectedAnswer, timeTaken } = data;
@@ -363,6 +366,15 @@ const setupDuelSockets = (io) => {
 
         const session = activeSessions.get(duelId);
         if (!session || session.status !== 'active') return;
+
+        // FIXED: Check if this is a duplicate submission
+        const processingInfo = roundProcessingState.get(duelId);
+        if (processingInfo && processingInfo.processing) {
+          console.log(
+            `⚠️ Round already being processed for duel ${duelId}, ignoring duplicate answer`,
+          );
+          return;
+        }
 
         console.log(
           `📝 User ${socket.username} submitted answer for question ${questionId}: ${selectedAnswer} (${timeTaken}ms)`,
@@ -392,7 +404,7 @@ const setupDuelSockets = (io) => {
           botSessionInfo.humanAnswered = true;
           botSessions.set(duelId, botSessionInfo);
 
-          // FIXED: Check and process round result immediately if bot already answered
+          // FIXED: Check and process round result with better synchronization
           await checkAndProcessRoundResult(duelId, session, io);
         } else {
           // Human vs Human - original logic
@@ -468,6 +480,8 @@ const setupDuelSockets = (io) => {
 
           // Clean up bot session if exists
           botSessions.delete(duelId);
+          // FIXED: Also clean up round processing state
+          roundProcessingState.delete(duelId);
 
           // If session becomes empty, clean it up after delay
           if (session.connectedUsers.size === 0) {
@@ -475,6 +489,7 @@ const setupDuelSockets = (io) => {
               const currentSession = activeSessions.get(duelId);
               if (currentSession && currentSession.connectedUsers.size === 0) {
                 activeSessions.delete(duelId);
+                roundProcessingState.delete(duelId);
                 console.log(`Cleaned up empty session for duel ${duelId}`);
               }
             }, 30000); // 30-second grace period
@@ -501,6 +516,13 @@ async function startDuelSession(duelId, roomName, io) {
     );
     activeSessions.set(duelId, session);
 
+    // FIXED: Initialize round processing state
+    roundProcessingState.set(duelId, {
+      processing: false,
+      currentQuestionId: null,
+      lastProcessedIndex: -1,
+    });
+
     console.log(
       `🎮 Starting duel session ${duelId} with ${session.questions.length} questions`,
     );
@@ -525,7 +547,7 @@ async function startDuelSession(duelId, roomName, io) {
   }
 }
 
-// Enhanced helper function to present next question
+// FIXED: Enhanced helper function to present next question with better state management
 async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
   try {
     const session = activeSessions.get(duelId);
@@ -539,11 +561,31 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
 
     const currentQuestion = session.questions[session.currentQuestionIndex];
 
+    // FIXED: Update round processing state to prevent duplicate processing
+    const processingInfo = roundProcessingState.get(duelId);
+    if (processingInfo) {
+      processingInfo.processing = false;
+      processingInfo.currentQuestionId = currentQuestion.question_id;
+      processingInfo.lastProcessedIndex = session.currentQuestionIndex;
+      roundProcessingState.set(duelId, processingInfo);
+    }
+
     console.log(
       `📝 Presenting question ${session.currentQuestionIndex + 1}/${
         session.questions.length
-      } for duel ${duelId}`,
+      } for duel ${duelId} (Question ID: ${currentQuestion.question_id})`,
     );
+
+    // FIXED: Reset bot session state for new question more thoroughly
+    const botSessionInfo = botSessions.get(duelId);
+    if (botSessionInfo) {
+      botSessionInfo.botAnswered = false;
+      botSessionInfo.humanAnswered = false;
+      botSessionInfo.processingRound = false;
+      botSessionInfo.currentQuestionIndex = session.currentQuestionIndex;
+      botSessionInfo.lastQuestionId = currentQuestion.question_id;
+      botSessions.set(duelId, botSessionInfo);
+    }
 
     io.to(roomName).emit('question_presented', {
       questionIndex: session.currentQuestionIndex,
@@ -556,21 +598,11 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
       timeLimit: 30000, // 30 seconds
     });
 
-    // FIXED: Reset bot session state for new question
-    const botSessionInfo = botSessions.get(duelId);
-    if (botSessionInfo) {
-      botSessionInfo.botAnswered = false;
-      botSessionInfo.humanAnswered = false;
-      botSessionInfo.pendingRoundResult = false;
-      botSessions.set(duelId, botSessionInfo);
-    }
-
     // Handle bot answers if there are bots in the duel
     if (botInfo.isInitiatorBot) {
       console.log(
         `🤖 Triggering bot answer for initiator ${botInfo.duel.initiator_id}`,
       );
-      // FIXED: No delay - start bot answer immediately
       handleBotAnswer(
         duelId,
         botInfo.duel.initiator_id,
@@ -584,7 +616,6 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
       console.log(
         `🤖 Triggering bot answer for opponent ${botInfo.duel.opponent_id}`,
       );
-      // FIXED: No delay - start bot answer immediately
       handleBotAnswer(
         duelId,
         botInfo.duel.opponent_id,
@@ -628,7 +659,7 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
   }
 }
 
-// FIXED: New helper function to handle bot answers with proper callback
+// FIXED: Enhanced bot answer handling with better error recovery
 async function handleBotAnswer(
   duelId,
   botUserId,
@@ -653,9 +684,36 @@ async function handleBotAnswer(
 
     console.log(`🤖 Bot ${botName} will answer in ${botAnswer.thinkingTime}ms`);
 
-    // Wait for the bot's thinking time
-    setTimeout(async () => {
+    // FIXED: Store timeout reference for cleanup
+    const botTimeout = setTimeout(async () => {
       try {
+        // Double-check the question is still current
+        const currentSession = activeSessions.get(duelId);
+        const botSessionInfo = botSessions.get(duelId);
+
+        if (!currentSession || !botSessionInfo) {
+          console.log(
+            `🤖 Session or bot info not found for duel ${duelId}, aborting bot answer`,
+          );
+          return;
+        }
+
+        // Check if this is still the correct question
+        if (botSessionInfo.lastQuestionId !== currentQuestion.question_id) {
+          console.log(
+            `🤖 Question changed for duel ${duelId}, aborting stale bot answer`,
+          );
+          return;
+        }
+
+        // Check if bot already answered
+        if (botSessionInfo.botAnswered) {
+          console.log(
+            `🤖 Bot already answered for duel ${duelId}, skipping duplicate`,
+          );
+          return;
+        }
+
         // Notify that bot answered
         io.to(roomName).emit('opponent_answered', {
           userId: botUserId,
@@ -679,50 +737,62 @@ async function handleBotAnswer(
         );
 
         // FIXED: Mark bot as answered and check for round result
-        const botSessionInfo = botSessions.get(duelId);
-        if (botSessionInfo) {
-          botSessionInfo.botAnswered = true;
-          botSessions.set(duelId, botSessionInfo);
+        botSessionInfo.botAnswered = true;
+        botSessions.set(duelId, botSessionInfo);
 
-          // Check if both players have answered
-          await checkAndProcessRoundResult(duelId, session, io);
-        }
+        // Check if both players have answered
+        await checkAndProcessRoundResult(duelId, currentSession, io);
       } catch (error) {
         console.error('Error in bot answer callback:', error);
-        // FIXED: If bot answer fails, still try to proceed
+        // FIXED: Fallback - mark as answered to prevent hanging
         const botSessionInfo = botSessions.get(duelId);
-        if (botSessionInfo) {
-          botSessionInfo.botAnswered = true; // Mark as answered to prevent hanging
+        if (botSessionInfo && !botSessionInfo.botAnswered) {
+          botSessionInfo.botAnswered = true;
           botSessions.set(duelId, botSessionInfo);
-          await checkAndProcessRoundResult(duelId, session, io);
+          const currentSession = activeSessions.get(duelId);
+          if (currentSession) {
+            await checkAndProcessRoundResult(duelId, currentSession, io);
+          }
         }
       }
     }, botAnswer.thinkingTime);
-  } catch (error) {
-    console.error('Error handling bot answer:', error);
-    // FIXED: If bot setup fails, mark as answered to prevent hanging
+
+    // Store timeout reference for potential cleanup
     const botSessionInfo = botSessions.get(duelId);
     if (botSessionInfo) {
+      botSessionInfo.botTimeout = botTimeout;
+      botSessions.set(duelId, botSessionInfo);
+    }
+  } catch (error) {
+    console.error('Error handling bot answer:', error);
+    // FIXED: Fallback - mark as answered to prevent hanging
+    const botSessionInfo = botSessions.get(duelId);
+    if (botSessionInfo && !botSessionInfo.botAnswered) {
       botSessionInfo.botAnswered = true;
       botSessions.set(duelId, botSessionInfo);
-      await checkAndProcessRoundResult(duelId, session, io);
+      const currentSession = activeSessions.get(duelId);
+      if (currentSession) {
+        await checkAndProcessRoundResult(duelId, currentSession, io);
+      }
     }
   }
 }
 
-// FIXED: New function to check and process round result
+// FIXED: Enhanced function to check and process round result with better synchronization
 async function checkAndProcessRoundResult(duelId, session, io) {
   try {
     const botSessionInfo = botSessions.get(duelId);
-    if (!botSessionInfo) return;
+    const processingInfo = roundProcessingState.get(duelId);
 
-    // Prevent duplicate processing
-    if (botSessionInfo.pendingRoundResult) {
+    if (!botSessionInfo || !processingInfo) return;
+
+    // FIXED: Prevent duplicate processing with multiple checks
+    if (processingInfo.processing || botSessionInfo.processingRound) {
       console.log(`🔄 Round result already being processed for duel ${duelId}`);
       return;
     }
 
-    // Check if both players have answered
+    // Check if both players have answered for the current question
     if (botSessionInfo.botAnswered && botSessionInfo.humanAnswered) {
       console.log(
         `🎯 Both players have answered question ${
@@ -730,18 +800,36 @@ async function checkAndProcessRoundResult(duelId, session, io) {
         } in duel ${duelId}`,
       );
 
-      // Mark as pending to prevent duplicate processing
-      botSessionInfo.pendingRoundResult = true;
+      // Mark as processing to prevent duplicate calls
+      processingInfo.processing = true;
+      botSessionInfo.processingRound = true;
+      roundProcessingState.set(duelId, processingInfo);
       botSessions.set(duelId, botSessionInfo);
 
       await processRoundResult(duelId, session, io);
+    } else {
+      console.log(`🤔 Waiting for more answers in duel ${duelId}:`, {
+        botAnswered: botSessionInfo.botAnswered,
+        humanAnswered: botSessionInfo.humanAnswered,
+      });
     }
   } catch (error) {
     console.error('Error checking and processing round result:', error);
+    // FIXED: Reset processing flags on error
+    const botSessionInfo = botSessions.get(duelId);
+    const processingInfo = roundProcessingState.get(duelId);
+    if (botSessionInfo) {
+      botSessionInfo.processingRound = false;
+      botSessions.set(duelId, botSessionInfo);
+    }
+    if (processingInfo) {
+      processingInfo.processing = false;
+      roundProcessingState.set(duelId, processingInfo);
+    }
   }
 }
 
-// FIXED: New centralized function to process round results
+// FIXED: Enhanced function to process round results with better error handling
 async function processRoundResult(duelId, session, io) {
   try {
     const roomName = `duel_${duelId}`;
@@ -774,6 +862,27 @@ async function processRoundResult(duelId, session, io) {
           currentSession.currentQuestionIndex += 1;
           activeSessions.set(duelId, currentSession);
 
+          // FIXED: Reset processing state for next question
+          const processingInfo = roundProcessingState.get(duelId);
+          if (processingInfo) {
+            processingInfo.processing = false;
+            processingInfo.lastProcessedIndex =
+              currentSession.currentQuestionIndex - 1;
+            roundProcessingState.set(duelId, processingInfo);
+          }
+
+          // Reset bot session state for next question
+          const botSessionInfo = botSessions.get(duelId);
+          if (botSessionInfo) {
+            // Cancel any pending bot timeout
+            if (botSessionInfo.botTimeout) {
+              clearTimeout(botSessionInfo.botTimeout);
+              delete botSessionInfo.botTimeout;
+            }
+            botSessionInfo.processingRound = false;
+            botSessions.set(duelId, botSessionInfo);
+          }
+
           // Get duel info for bot handling
           const duel = await duelSessionService.getDuelById(duelId);
           const isInitiatorBot = await botService.isBot(duel.initiator_id);
@@ -794,7 +903,20 @@ async function processRoundResult(duelId, session, io) {
     }
   } catch (error) {
     console.error('Error processing round result:', error);
-    // FIXED: If round result fails, still try to continue
+    // FIXED: Reset processing state on error and try to continue
+    const processingInfo = roundProcessingState.get(duelId);
+    const botSessionInfo = botSessions.get(duelId);
+
+    if (processingInfo) {
+      processingInfo.processing = false;
+      roundProcessingState.set(duelId, processingInfo);
+    }
+
+    if (botSessionInfo) {
+      botSessionInfo.processingRound = false;
+      botSessions.set(duelId, botSessionInfo);
+    }
+
     const roomName = `duel_${duelId}`;
     io.to(roomName).emit('room_error', {
       message: 'Error processing round result',
@@ -824,8 +946,9 @@ async function completeDuel(duelId, roomName, io) {
     // Send final results to both players
     io.to(roomName).emit('duel_completed', finalResults);
 
-    // Clean up bot session
+    // Clean up all related state
     botSessions.delete(duelId);
+    roundProcessingState.delete(duelId);
 
     // Clean up session after a delay
     setTimeout(() => {
