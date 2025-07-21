@@ -151,36 +151,44 @@ const duelSessionService = {
   },
 
   // Get round results for a specific question
+  // REPLACE WITH THIS CORRECTED VERSION
   async getRoundResults(sessionId, questionIndex) {
     try {
-      const { data: answers, error } = await supabase
+      // 1. Get the session to reliably access the question list
+      const { data: session, error: sessionError } = await supabase
+        .from('duel_sessions')
+        .select('questions')
+        .eq('session_id', sessionId)
+        .single();
+      if (sessionError) throw sessionError;
+
+      const questionDetails = session.questions?.[questionIndex];
+      if (!questionDetails) {
+        console.error(
+          `Could not find question details at index ${questionIndex} for session ${sessionId}`,
+        );
+        // Return a structured but empty payload to prevent crashes
+        return { questionIndex, question: {}, answers: [] };
+      }
+
+      // 2. Now, get all the answers for this round
+      const { data: answersData, error: answersError } = await supabase
         .from('duel_answers')
-        .select(
-          `
-          user_id,
-          selected_answer,
-          is_correct,
-          answer_time_ms,
-          question_id,
-          test_questions(correct_answer, question_text, options, explanation)
-        `,
-        )
+        .select('user_id, selected_answer, is_correct, answer_time_ms')
         .eq('session_id', sessionId)
         .eq('question_index', questionIndex);
+      if (answersError) throw answersError;
 
-      if (error) throw error;
-
-      const question = answers[0]?.test_questions;
-
+      // 3. Construct a complete and valid payload using the reliable data
       return {
         questionIndex,
         question: {
-          text: question?.question_text,
-          options: question?.options, // This will be in format {"A": "answer1", "B": "answer2", ...}
-          correctAnswer: question?.correct_answer,
-          explanation: question?.explanation, // Now includes explanation
+          text: questionDetails.question_text,
+          options: questionDetails.options,
+          correctAnswer: questionDetails.correct_answer,
+          explanation: questionDetails.explanation || null,
         },
-        answers: answers.map((a) => ({
+        answers: answersData.map((a) => ({
           userId: a.user_id,
           selectedAnswer: a.selected_answer,
           isCorrect: a.is_correct,
@@ -189,38 +197,49 @@ const duelSessionService = {
       };
     } catch (error) {
       console.error('Error getting round results:', error);
-      throw error;
+      // On any error, return a safe, empty structure
+      return { questionIndex, question: {}, answers: [] };
     }
   },
 
   // Auto-submit for users who didn't answer in time
+  // REPLACE WITH THIS CORRECTED VERSION
   async autoSubmitUnanswered(sessionId, questionIndex) {
     try {
-      // Get session to find which users should have answered
+      // 1. Get the session, which contains the list of questions for this duel
       const { data: session, error: sessionError } = await supabase
         .from('duel_sessions')
-        .select('duel_id')
+        .select('duel_id, questions') // We need the 'questions' array!
         .eq('session_id', sessionId)
         .single();
 
       if (sessionError) throw sessionError;
 
-      // Get duel participants
+      // 2. Find the specific question ID for the current round
+      const currentQuestion = session.questions?.[questionIndex];
+      if (!currentQuestion || !currentQuestion.question_id) {
+        console.error(
+          `FATAL: Could not find question_id for index ${questionIndex} in session ${sessionId}`,
+        );
+        // If we can't find the question, we can't submit an answer.
+        return false;
+      }
+      const questionIdForRound = currentQuestion.question_id;
+
+      // 3. Get duel participants
       const { data: duel, error: duelError } = await supabase
         .from('duels')
         .select('initiator_id, opponent_id')
         .eq('duel_id', session.duel_id)
         .single();
-
       if (duelError) throw duelError;
 
-      // Check who has already answered
+      // 4. Check who has already answered
       const { data: existingAnswers, error: answersError } = await supabase
         .from('duel_answers')
         .select('user_id')
         .eq('session_id', sessionId)
         .eq('question_index', questionIndex);
-
       if (answersError) throw answersError;
 
       const answeredUserIds = existingAnswers.map((a) => a.user_id);
@@ -229,29 +248,34 @@ const duelSessionService = {
         (id) => !answeredUserIds.includes(id),
       );
 
-      // Auto-submit empty answers for users who didn't respond
+      // 5. Build the submission payload WITH the correct question_id
       const autoSubmissions = unansweredUserIds.map((userId) => ({
         session_id: sessionId,
         user_id: userId,
-        question_id: null, // We'll need to get this from session questions
+        question_id: questionIdForRound, // CRITICAL FIX: Use the correct ID
         question_index: questionIndex,
         selected_answer: null,
         is_correct: false,
-        answer_time_ms: 30000, // Full timeout
+        answer_time_ms: 30000,
       }));
 
+      // 6. Insert the valid records
       if (autoSubmissions.length > 0) {
+        console.log(
+          `⏰ Auto-submitting timeout answers for users: ${unansweredUserIds.join(
+            ', ',
+          )}`,
+        );
         const { error: insertError } = await supabase
           .from('duel_answers')
           .insert(autoSubmissions);
-
         if (insertError) throw insertError;
       }
 
       return true;
     } catch (error) {
       console.error('Error auto-submitting unanswered:', error);
-      throw error;
+      return false; // Return false on failure
     }
   },
 

@@ -625,12 +625,16 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
       );
     }
 
-    // Auto-submit for unanswered questions after time limit
+    // THIS IS THE CORRECTED TIMEOUT LOGIC
     setTimeout(async () => {
       const currentSession = activeSessions.get(duelId);
+      const botSessionInfo = botSessions.get(duelId);
+
       if (
         currentSession &&
-        currentSession.currentQuestionIndex === session.currentQuestionIndex
+        botSessionInfo &&
+        currentSession.currentQuestionIndex === session.currentQuestionIndex &&
+        !botSessionInfo.processingRound // Only run if not already processed
       ) {
         console.log(
           `⏰ Time limit reached for question ${
@@ -638,22 +642,24 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
           } in duel ${duelId}`,
         );
 
+        // Submit a timeout answer for any player who hasn't answered
         await duelSessionService.autoSubmitUnanswered(
           session.sessionId,
           session.currentQuestionIndex,
         );
 
-        // Check if we can proceed (both answered or timed out)
-        const bothCompleted = await duelSessionService.checkBothCompleted(
-          session.sessionId,
-          session.currentQuestionIndex,
-        );
+        // Mark both as "answered" to satisfy the gatekeeper condition
+        botSessionInfo.humanAnswered = true;
+        botSessionInfo.botAnswered = true;
+        botSessions.set(duelId, botSessionInfo);
 
-        if (bothCompleted) {
-          await processRoundResult(duelId, currentSession, io);
-        }
+        // NOW, call the synchronized gatekeeper function, just like the other handlers
+        console.log(
+          `⏰ Timeout triggering round result check for duel ${duelId}`,
+        );
+        await checkAndProcessRoundResult(duelId, currentSession, io);
       }
-    }, 30000); // 30-second timer
+    }, 30000);
   } catch (error) {
     console.error('Error presenting question:', error);
   }
