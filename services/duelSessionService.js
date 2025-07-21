@@ -90,35 +90,38 @@ const duelSessionService = {
     }
   },
 
-  // Submit an answer for a question
-  async submitAnswer(sessionId, userId, questionId, selectedAnswer, timeTaken) {
+  // REPLACE WITH THIS
+  async submitAnswer(
+    sessionId,
+    userId,
+    questionId,
+    questionIndex, // <-- Add this new parameter
+    selectedAnswer,
+    timeTaken,
+  ) {
     try {
-      // Get the question to check correct answer
       const { data: question, error: questionError } = await supabase
         .from('test_questions')
         .select('correct_answer')
         .eq('question_id', questionId)
         .single();
-
       if (questionError) throw questionError;
 
       const isCorrect = selectedAnswer === question.correct_answer;
 
-      // Insert the answer
       const { data: answer, error } = await supabase
         .from('duel_answers')
         .insert({
           session_id: sessionId,
           user_id: userId,
           question_id: questionId,
-          question_index: 0, // Will be updated based on current question index
+          question_index: questionIndex, // <-- CRITICAL FIX: Use the passed-in index
           selected_answer: selectedAnswer,
           is_correct: isCorrect,
           answer_time_ms: timeTaken,
         })
         .select('*')
         .single();
-
       if (error) throw error;
 
       return {

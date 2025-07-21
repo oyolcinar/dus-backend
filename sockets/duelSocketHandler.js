@@ -356,35 +356,43 @@ const setupDuelSockets = (io) => {
       }
     });
 
-    // FIXED: Enhanced submit answer with better duplicate prevention
     socket.on('submit_answer', async (data) => {
       try {
         const { questionId, selectedAnswer, timeTaken } = data;
         const duelId = socket.currentDuelId;
 
-        if (!duelId) return;
+        if (!duelId) {
+          console.log('User submitted answer but has no currentDuelId');
+          return;
+        }
 
         const session = activeSessions.get(duelId);
-        if (!session || session.status !== 'active') return;
-
-        // FIXED: Check if this is a duplicate submission
-        const processingInfo = roundProcessingState.get(duelId);
-        if (processingInfo && processingInfo.processing) {
+        if (!session || session.status !== 'active') {
           console.log(
-            `⚠️ Round already being processed for duel ${duelId}, ignoring duplicate answer`,
+            `User submitted answer but session is invalid or not active for duel ${duelId}`,
+          );
+          return;
+        }
+
+        // Check if this is a duplicate submission (race condition with timeout)
+        const botSessionInfo = botSessions.get(duelId);
+        if (botSessionInfo && botSessionInfo.processingRound) {
+          console.log(
+            `⚠️ Round already being processed for duel ${duelId}, ignoring user answer for question ${questionId}`,
           );
           return;
         }
 
         console.log(
-          `📝 User ${socket.username} submitted answer for question ${questionId}: ${selectedAnswer} (${timeTaken}ms)`,
+          `📝 User ${socket.username} (ID: ${socket.userId}) submitted answer for question ${questionId}: ${selectedAnswer} (${timeTaken}ms) at index ${session.currentQuestionIndex}`,
         );
 
-        // Record the answer
-        const answerResult = await duelSessionService.submitAnswer(
+        // CRITICAL FIX: Pass the correct questionIndex to the service
+        await duelSessionService.submitAnswer(
           session.sessionId,
           socket.userId,
           questionId,
+          session.currentQuestionIndex, // This is the fix
           selectedAnswer,
           timeTaken,
         );
@@ -397,14 +405,13 @@ const setupDuelSockets = (io) => {
           username: socket.username,
         });
 
-        // Check if this is a bot game
-        const botSessionInfo = botSessions.get(duelId);
+        // Handle game flow (specifically for bot games)
         if (botSessionInfo) {
           console.log(`🤖 Bot game detected, marking human as answered...`);
           botSessionInfo.humanAnswered = true;
           botSessions.set(duelId, botSessionInfo);
 
-          // FIXED: Check and process round result with better synchronization
+          // Call the central gatekeeper to see if the round is complete
           await checkAndProcessRoundResult(duelId, session, io);
         } else {
           // Human vs Human - original logic
@@ -418,7 +425,7 @@ const setupDuelSockets = (io) => {
           }
         }
       } catch (error) {
-        console.error('Error submitting answer:', error);
+        console.error('Error in submit_answer handler:', error);
         socket.emit('answer_error', { message: 'Failed to submit answer' });
       }
     });
