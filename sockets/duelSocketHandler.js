@@ -626,38 +626,47 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
     }
 
     // THIS IS THE CORRECTED TIMEOUT LOGIC
+    // REPLACE WITH THIS CORRECTED AND SIMPLIFIED TIMEOUT LOGIC
     setTimeout(async () => {
       const currentSession = activeSessions.get(duelId);
       const botSessionInfo = botSessions.get(duelId);
 
+      // Use a processing lock to ensure this only runs once per question
       if (
         currentSession &&
         botSessionInfo &&
         currentSession.currentQuestionIndex === session.currentQuestionIndex &&
-        !botSessionInfo.processingRound // Only run if not already processed
+        !botSessionInfo.processingRound
       ) {
+        // --- START OF CRITICAL FIX ---
+
+        // 1. Immediately lock this round to prevent the user's answer from interfering.
+        botSessionInfo.processingRound = true;
+        botSessions.set(duelId, botSessionInfo);
+
         console.log(
           `⏰ Time limit reached for question ${
             session.currentQuestionIndex + 1
-          } in duel ${duelId}`,
+          } in duel ${duelId}. Processing as timeout.`,
         );
 
-        // Submit a timeout answer for any player who hasn't answered
+        // 2. Submit a timeout answer for any player who hasn't answered.
+        // This will now correctly write to the database.
         await duelSessionService.autoSubmitUnanswered(
           session.sessionId,
           session.currentQuestionIndex,
         );
 
-        // Mark both as "answered" to satisfy the gatekeeper condition
+        // 3. Force the state to "answered" for the gatekeeper.
         botSessionInfo.humanAnswered = true;
         botSessionInfo.botAnswered = true;
         botSessions.set(duelId, botSessionInfo);
 
-        // NOW, call the synchronized gatekeeper function, just like the other handlers
-        console.log(
-          `⏰ Timeout triggering round result check for duel ${duelId}`,
-        );
+        // 4. Call the central gatekeeper function. It will now have the correct
+        // data from the database and will correctly determine that the duel is over.
         await checkAndProcessRoundResult(duelId, currentSession, io);
+
+        // --- END OF CRITICAL FIX ---
       }
     }, 30000);
   } catch (error) {
