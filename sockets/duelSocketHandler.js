@@ -1,4 +1,4 @@
-// =================== START: COMPLETE duelSocketHandler.js FILE ===================
+// =================== START: COMPLETE and FINAL duelSocketHandler.js ===================
 
 const { supabaseUrl, supabaseKey } = require('../config/supabase');
 const { createClient } = require('@supabase/supabase-js');
@@ -6,88 +6,38 @@ const db = require('../config/db');
 const duelSessionService = require('../services/duelSessionService');
 const botService = require('../services/botService');
 
-// Create Supabase client using your existing config
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// In-memory store for active duel sessions (use Redis in production)
 const activeSessions = new Map();
-const userSockets = new Map(); // userId -> socketId
+const userSockets = new Map();
 const botSessions = new Map(); // duelId -> bot session info
 
 const setupDuelSockets = (io) => {
-  // Enhanced middleware for socket authentication using your existing Supabase logic
   io.use(async (socket, next) => {
     try {
-      console.log('🔧 Socket Auth: Starting authentication...');
-
-      // Get the token from the socket handshake (same as your HTTP middleware)
       const token = socket.handshake.auth.token;
-
-      if (!token) {
-        console.log('🔧 Socket Auth: No token provided');
+      if (!token)
         return next(new Error('Authentication error: No token provided'));
-      }
-
-      // Verify the token with Supabase (exactly like your authSupabase.js middleware)
       const {
         data: { user },
         error,
       } = await supabase.auth.getUser(token);
-
-      if (error || !user) {
-        console.log(
-          '🔧 Socket Auth: Supabase verification failed:',
-          error?.message || 'No user',
-        );
+      if (error || !user)
         return next(new Error('Authentication error: Invalid token'));
-      }
-
-      // Get the user from your database using auth_id (exactly like your middleware)
-      const query = `
-        SELECT user_id, username, email, role, subscription_type 
-        FROM users 
-        WHERE auth_id = $1
-      `;
-
-      try {
-        const result = await db.query(query, [user.id]);
-        const dbUser = result.rows[0];
-
-        if (!dbUser) {
-          console.log(
-            '🔧 Socket Auth: User not found in database for auth_id:',
-            user.id,
-          );
-          return next(
-            new Error('Authentication error: User account not found'),
-          );
-        }
-
-        // Attach the user information to the socket (same structure as your HTTP middleware)
-        socket.userId = dbUser.user_id;
-        socket.username = dbUser.username;
-        socket.email = dbUser.email;
-        socket.role = dbUser.role;
-        socket.subscriptionType = dbUser.subscription_type;
-        socket.authId = user.id;
-
-        console.log(
-          '🔧 Socket Auth: Authentication successful for user:',
-          socket.username,
-        );
-        next();
-      } catch (dbError) {
-        console.error(
-          '🔧 Socket Auth: Database error during authentication:',
-          dbError,
-        );
-        return next(new Error('Authentication error: Database error'));
-      }
-    } catch (error) {
-      console.error(
-        '🔧 Socket Auth: Unexpected error during authentication:',
-        error,
+      const result = await db.query(
+        'SELECT user_id, username, email, role FROM users WHERE auth_id = $1',
+        [user.id],
       );
+      const dbUser = result.rows[0];
+      if (!dbUser)
+        return next(new Error('Authentication error: User account not found'));
+      socket.userId = dbUser.user_id;
+      socket.username = dbUser.username;
+      socket.email = dbUser.email;
+      socket.role = dbUser.role;
+      next();
+    } catch (error) {
+      console.error('🔧 Socket Auth: Unexpected error:', error);
       return next(new Error('Authentication error: Unexpected error'));
     }
   });
@@ -96,78 +46,42 @@ const setupDuelSockets = (io) => {
     console.log(
       `User ${socket.userId} (${socket.username}) connected: ${socket.id}`,
     );
-
-    // Store user socket mapping
     userSockets.set(socket.userId, socket.id);
 
-    // Enhanced join duel room with bot detection
     socket.on('join_duel_room', async (data) => {
       try {
         const { duelId } = data;
         const roomName = `duel_${duelId}`;
-
-        console.log(
-          `🔧 Socket: User ${socket.username} (${socket.userId}) joining duel ${duelId}`,
-        );
-
-        // Verify user is part of this duel
         const duel = await duelSessionService.getDuelById(duelId);
         if (
           !duel ||
           (duel.initiator_id !== socket.userId &&
             duel.opponent_id !== socket.userId)
         ) {
-          console.log(
-            `🔧 Socket: User ${socket.userId} unauthorized for duel ${duelId}`,
-          );
           return socket.emit('room_error', {
             message: 'Unauthorized to join this duel',
           });
         }
-
-        // Check if duel is active
         if (duel.status !== 'active') {
-          console.log(
-            `🔧 Socket: Duel ${duelId} is not active (status: ${duel.status})`,
-          );
           return socket.emit('room_error', { message: 'Duel is not active' });
         }
-
-        // Join the room
         socket.join(roomName);
         socket.currentDuelId = duelId;
-
-        // Check if there's a bot in this duel
         const opponentId =
           duel.initiator_id === socket.userId
             ? duel.opponent_id
             : duel.initiator_id;
         const isOpponentBot = await botService.isBot(opponentId);
-
-        console.log(
-          `🔍 Duel ${duelId}: User ${socket.userId} vs ${opponentId} (Bot: ${isOpponentBot})`,
-        );
-
-        // Get or create session
         let session = activeSessions.get(duelId);
         if (!session) {
           session = await duelSessionService.createSession(duel);
           activeSessions.set(duelId, session);
-          console.log(`🔧 Socket: Created new session for duel ${duelId}`);
         }
-
-        // Add user to session
         session.connectedUsers.set(socket.userId, {
           socketId: socket.id,
           username: socket.username,
           ready: false,
-          connectedAt: new Date(),
         });
-
-        console.log(
-          `🔧 Socket: User ${socket.username} joined session for duel ${duelId}`,
-        );
-
         socket.emit('room_joined', {
           session: {
             sessionId: session.sessionId,
@@ -178,16 +92,10 @@ const setupDuelSockets = (io) => {
             ),
           },
         });
-
         if (isOpponentBot) {
-          console.log('🤖 Bot game detected, initializing bot behavior...');
           botSessions.set(duelId, {
             botUserId: opponentId,
             humanUserId: socket.userId,
-            botAnswered: false,
-            humanAnswered: false,
-            processingRound: false,
-            lastQuestionId: null,
           });
           const botInfo = await botService.getBotInfo(opponentId);
           session.connectedUsers.set(opponentId, {
@@ -196,23 +104,19 @@ const setupDuelSockets = (io) => {
             ready: false,
             isBot: true,
           });
-          activeSessions.set(duelId, session);
           io.to(roomName).emit('opponent_joined', {
             username: botInfo?.botName || 'Dr. Bot',
             isBot: true,
           });
           setTimeout(() => io.to(roomName).emit('both_players_connected'), 500);
         } else {
-          // Human vs Human
           const opponentSocketId = userSockets.get(opponentId);
-          if (opponentSocketId) {
+          if (opponentSocketId)
             io.to(opponentSocketId).emit('opponent_joined', {
               username: socket.username,
             });
-          }
-          if (session.connectedUsers.size === 2) {
+          if (session.connectedUsers.size === 2)
             io.to(roomName).emit('both_players_connected');
-          }
         }
       } catch (error) {
         console.error('Error joining duel room:', error);
@@ -226,7 +130,6 @@ const setupDuelSockets = (io) => {
         if (!duelId) return;
         const session = activeSessions.get(duelId);
         if (!session) return;
-
         const user = session.connectedUsers.get(socket.userId);
         if (user) user.ready = true;
         const roomName = `duel_${duelId}`;
@@ -234,7 +137,6 @@ const setupDuelSockets = (io) => {
           userId: socket.userId,
           username: socket.username,
         });
-
         const botSessionInfo = botSessions.get(duelId);
         if (botSessionInfo) {
           const botUser = session.connectedUsers.get(botSessionInfo.botUserId);
@@ -245,7 +147,6 @@ const setupDuelSockets = (io) => {
             isBot: true,
           });
         }
-
         const allReady = Array.from(session.connectedUsers.values()).every(
           (u) => u.ready,
         );
@@ -253,11 +154,10 @@ const setupDuelSockets = (io) => {
           session.status = 'starting';
           activeSessions.set(duelId, session);
           let countdown = 3;
-          io.to(roomName).emit('duel_starting', { countdown });
           const countdownInterval = setInterval(() => {
-            countdown--;
             io.to(roomName).emit('duel_starting', { countdown });
-            if (countdown <= 0) {
+            countdown--;
+            if (countdown < 0) {
               clearInterval(countdownInterval);
               startDuelSession(duelId, roomName, io);
             }
@@ -276,22 +176,14 @@ const setupDuelSockets = (io) => {
         const session = activeSessions.get(duelId);
         if (!session || session.status !== 'active') return;
 
-        const botSessionInfo = botSessions.get(duelId);
-        if (botSessionInfo && botSessionInfo.processingRound) {
-          return console.log(
-            `⚠️ Round already being processed for duel ${duelId}, ignoring user answer.`,
-          );
-        }
-
         console.log(
           `📝 User ${socket.username} submitted answer for question ${questionId} at index ${session.currentQuestionIndex}`,
         );
-
         await duelSessionService.submitAnswer(
           session.sessionId,
           socket.userId,
           questionId,
-          session.currentQuestionIndex, // Pass correct index
+          session.currentQuestionIndex,
           selectedAnswer,
           timeTaken,
         );
@@ -302,17 +194,8 @@ const setupDuelSockets = (io) => {
           username: socket.username,
         });
 
-        if (botSessionInfo) {
-          botSessionInfo.humanAnswered = true;
-          botSessions.set(duelId, botSessionInfo);
-          await checkAndProcessRoundResult(duelId, session, io);
-        } else {
-          const bothAnswered = await duelSessionService.checkBothAnswered(
-            session.sessionId,
-            session.currentQuestionIndex,
-          );
-          if (bothAnswered) await processRoundResult(duelId, session, io);
-        }
+        // ALWAYS check if both answered after any submission
+        await checkAndProcessRoundResult(duelId, session, io);
       } catch (error) {
         console.error('Error in submit_answer handler:', error);
         socket.emit('answer_error', { message: 'Failed to submit answer' });
@@ -354,10 +237,7 @@ const setupDuelSockets = (io) => {
           });
           botSessions.delete(duelId);
           if (session.connectedUsers.size === 0) {
-            setTimeout(() => {
-              activeSessions.delete(duelId);
-              console.log(`Cleaned up empty session for duel ${duelId}`);
-            }, 30000);
+            setTimeout(() => activeSessions.delete(duelId), 30000);
           }
         }
       }
@@ -375,6 +255,7 @@ async function startDuelSession(duelId, roomName, io) {
     session.questions = await duelSessionService.getQuestionsForDuel(
       session.duelId,
     );
+    session.processingLock = false; // Add a simple lock to the session itself
     activeSessions.set(duelId, session);
     console.log(
       `🎮 Starting duel session ${duelId} with ${session.questions.length} questions`,
@@ -398,20 +279,12 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
 
     const currentQuestion = session.questions[session.currentQuestionIndex];
     if (!currentQuestion) {
-      console.error(
-        `FATAL: No question found at index ${session.currentQuestionIndex} for duel ${duelId}. Ending duel.`,
-      );
       return await completeDuel(duelId, roomName, io);
     }
 
-    const botSessionInfo = botSessions.get(duelId);
-    if (botSessionInfo) {
-      botSessionInfo.botAnswered = false;
-      botSessionInfo.humanAnswered = false;
-      botSessionInfo.processingRound = false;
-      botSessionInfo.lastQuestionId = currentQuestion.question_id;
-      botSessions.set(duelId, botSessionInfo);
-    }
+    // Release the lock for the new question
+    session.processingLock = false;
+    activeSessions.set(duelId, session);
 
     console.log(
       `📝 Presenting question ${session.currentQuestionIndex + 1}/${
@@ -442,15 +315,12 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
 
     setTimeout(async () => {
       const currentSession = activeSessions.get(duelId);
-      const bsi = botSessions.get(duelId);
+      // Check if this timeout is for the current question and it's not already being processed
       if (
         currentSession &&
-        bsi &&
         currentSession.currentQuestionIndex === session.currentQuestionIndex &&
-        !bsi.processingRound
+        !currentSession.processingLock
       ) {
-        bsi.processingRound = true;
-        botSessions.set(duelId, bsi);
         console.log(
           `⏰ Timeout for question ${
             session.currentQuestionIndex + 1
@@ -460,9 +330,7 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
           session.sessionId,
           session.currentQuestionIndex,
         );
-        bsi.humanAnswered = true;
-        bsi.botAnswered = true;
-        botSessions.set(duelId, bsi);
+        // After auto-submitting, we just need to check if the round is complete
         await checkAndProcessRoundResult(duelId, currentSession, io);
       }
     }, 30000);
@@ -479,7 +347,6 @@ async function handleBotAnswer(
   io,
 ) {
   try {
-    const roomName = `duel_${duelId}`;
     const botAnswer = await botService.simulateBotAnswer(
       botUserId,
       currentQuestion.question_id,
@@ -493,17 +360,15 @@ async function handleBotAnswer(
     setTimeout(async () => {
       try {
         const currentSession = activeSessions.get(duelId);
-        const botSessionInfo = botSessions.get(duelId);
+        // Make sure we are still on the same question before bot answers
         if (
           !currentSession ||
-          !botSessionInfo ||
-          botSessionInfo.lastQuestionId !== currentQuestion.question_id ||
-          botSessionInfo.botAnswered
+          currentSession.currentQuestionIndex !== session.currentQuestionIndex
         ) {
           return;
         }
 
-        io.to(roomName).emit('opponent_answered', {
+        io.to(`duel_${duelId}`).emit('opponent_answered', {
           userId: botUserId,
           username: botName,
           isBot: true,
@@ -516,13 +381,12 @@ async function handleBotAnswer(
           session.sessionId,
           botUserId,
           currentQuestion.question_id,
-          currentSession.currentQuestionIndex, // THE FIX
+          currentSession.currentQuestionIndex,
           botAnswer.selectedAnswer,
           botAnswer.timeTaken,
         );
 
-        botSessionInfo.botAnswered = true;
-        botSessions.set(duelId, botSessionInfo);
+        // ALWAYS check if the round is complete after the bot answers
         await checkAndProcessRoundResult(duelId, currentSession, io);
       } catch (error) {
         console.error('Error in bot answer callback:', error);
@@ -535,15 +399,21 @@ async function handleBotAnswer(
 
 async function checkAndProcessRoundResult(duelId, session, io) {
   try {
-    const botSessionInfo = botSessions.get(duelId);
-    // This check is for bot games only
-    if (!botSessionInfo || botSessionInfo.processingRound) {
+    // If it's already locked, another process is handling it. Exit.
+    if (session.processingLock) {
       return;
     }
 
-    if (botSessionInfo.botAnswered && botSessionInfo.humanAnswered) {
-      botSessionInfo.processingRound = true;
-      botSessions.set(duelId, botSessionInfo);
+    const bothHaveAnswered = await duelSessionService.checkBothAnswered(
+      session.sessionId,
+      session.currentQuestionIndex,
+    );
+
+    if (bothHaveAnswered) {
+      // LOCK IT. Only one process can enter this block per question.
+      session.processingLock = true;
+      activeSessions.set(duelId, session);
+
       console.log(
         `🎯 Both players answered for duel ${duelId}, processing results...`,
       );
@@ -551,6 +421,11 @@ async function checkAndProcessRoundResult(duelId, session, io) {
     }
   } catch (error) {
     console.error('Error checking and processing round result:', error);
+    // If something goes wrong, unlock to prevent a permanent freeze
+    if (session) {
+      session.processingLock = false;
+      activeSessions.set(duelId, session);
+    }
   }
 }
 
@@ -573,15 +448,10 @@ async function processRoundResult(duelId, session, io) {
       if (isDuelOver) {
         await completeDuel(duelId, roomName, io);
       } else {
-        const currentSession = activeSessions.get(duelId);
-        if (currentSession) {
-          const duel = await duelSessionService.getDuelById(duelId);
-          const isOpponentBot = await botService.isBot(duel.opponent_id);
-          await presentNextQuestion(duelId, roomName, io, {
-            isOpponentBot,
-            duel,
-          });
-        }
+        await presentNextQuestion(duelId, roomName, io, {
+          isOpponentBot: true,
+          duel: await duelSessionService.getDuelById(duelId),
+        });
       }
     }, 3000);
   } catch (error) {

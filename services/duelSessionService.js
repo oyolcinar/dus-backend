@@ -11,15 +11,12 @@ const supabase = createClient(
 );
 
 const duelSessionService = {
-  // Get duel by ID
   async getDuelById(duelId) {
     return await duelModel.getById(duelId);
   },
 
-  // Create a new duel session
   async createSession(duel) {
     try {
-      // Create session in database
       const { data: session, error } = await supabase
         .from('duel_sessions')
         .insert({
@@ -30,18 +27,14 @@ const duelSessionService = {
         })
         .select('*')
         .single();
-
       if (error) throw error;
-
-      // Return session with connected users map
       return {
         sessionId: session.session_id,
         duelId: session.duel_id,
         status: session.status,
         currentQuestionIndex: session.current_question_index,
         questions: session.questions || [],
-        connectedUsers: new Map(), // Will be populated when users connect
-        createdAt: session.created_at,
+        connectedUsers: new Map(),
       };
     } catch (error) {
       console.error('Error creating duel session:', error);
@@ -49,40 +42,28 @@ const duelSessionService = {
     }
   },
 
-  // Get questions for a duel based on test_id
   async getQuestionsForDuel(duelId) {
     try {
-      // Get duel and test information
       const duel = await this.getDuelById(duelId);
-      if (!duel || !duel.test_id) {
-        throw new Error('Duel or test not found');
-      }
-
+      if (!duel || !duel.test_id) throw new Error('Duel or test not found');
       const { data: questions, error } = await supabase
         .from('test_questions')
         .select(
           'question_id, test_id, question_text, options, correct_answer, explanation',
         )
         .eq('test_id', duel.test_id);
-
       if (error) throw error;
-      if (!questions || questions.length === 0) {
+      if (!questions || questions.length === 0)
         throw new Error(`No questions found for test_id: ${duel.test_id}`);
-      }
-
-      // Shuffle questions and limit to question_count
       const shuffledQuestions = questions.sort(() => Math.random() - 0.5);
       const limitedQuestions = shuffledQuestions.slice(
         0,
         duel.question_count || 3,
       );
-
-      // Update session with questions
       await supabase
         .from('duel_sessions')
         .update({ questions: limitedQuestions })
         .eq('duel_id', duelId);
-
       return limitedQuestions;
     } catch (error) {
       console.error('Error getting questions for duel:', error);
@@ -105,10 +86,8 @@ const duelSessionService = {
         .eq('question_id', questionId)
         .single();
       if (questionError) throw questionError;
-
       const isCorrect = selectedAnswer === question.correct_answer;
-
-      const { data: answer, error } = await supabase
+      const { error } = await supabase
         .from('duel_answers')
         .insert({
           session_id: sessionId,
@@ -118,13 +97,8 @@ const duelSessionService = {
           selected_answer: selectedAnswer,
           is_correct: isCorrect,
           answer_time_ms: timeTaken,
-        })
-        .select('*')
-        .single();
-
+        });
       if (error) throw error;
-
-      return { answerId: answer.answer_id, isCorrect, timeTaken };
     } catch (error) {
       console.error('Error submitting answer:', error);
       throw error;
@@ -133,13 +107,13 @@ const duelSessionService = {
 
   async checkBothAnswered(sessionId, questionIndex) {
     try {
-      const { data: answers, error } = await supabase
+      const { count, error } = await supabase
         .from('duel_answers')
-        .select('user_id')
+        .select('*', { count: 'exact', head: true })
         .eq('session_id', sessionId)
         .eq('question_index', questionIndex);
       if (error) throw error;
-      return answers.length >= 2;
+      return count >= 2;
     } catch (error) {
       console.error('Error checking both answered:', error);
       return false;
@@ -154,7 +128,6 @@ const duelSessionService = {
         .eq('session_id', sessionId)
         .single();
       if (sessionError) throw sessionError;
-
       const questionDetails = session.questions?.[questionIndex];
       if (!questionDetails) {
         console.error(
@@ -162,14 +135,12 @@ const duelSessionService = {
         );
         return { questionIndex, question: {}, answers: [] };
       }
-
       const { data: answersData, error: answersError } = await supabase
         .from('duel_answers')
         .select('user_id, selected_answer, is_correct, answer_time_ms')
         .eq('session_id', sessionId)
         .eq('question_index', questionIndex);
       if (answersError) throw answersError;
-
       return {
         questionIndex,
         question: {
@@ -199,41 +170,35 @@ const duelSessionService = {
         .eq('session_id', sessionId)
         .single();
       if (sessionError) throw sessionError;
-
       const currentQuestion = session.questions?.[questionIndex];
       if (!currentQuestion || !currentQuestion.question_id) {
         console.error(
           `FATAL: Could not find question_id for timeout at index ${questionIndex} in session ${sessionId}`,
         );
-        return false;
+        return;
       }
-      const questionIdForRound = currentQuestion.question_id;
-
       const { data: duel, error: duelError } = await supabase
         .from('duels')
         .select('initiator_id, opponent_id')
         .eq('duel_id', session.duel_id)
         .single();
       if (duelError) throw duelError;
-
       const { data: existingAnswers, error: answersError } = await supabase
         .from('duel_answers')
         .select('user_id')
         .eq('session_id', sessionId)
         .eq('question_index', questionIndex);
       if (answersError) throw answersError;
-
       const answeredUserIds = existingAnswers.map((a) => a.user_id);
       const allUserIds = [duel.initiator_id, duel.opponent_id];
       const unansweredUserIds = allUserIds.filter(
         (id) => !answeredUserIds.includes(id),
       );
-
       if (unansweredUserIds.length > 0) {
         const autoSubmissions = unansweredUserIds.map((userId) => ({
           session_id: sessionId,
           user_id: userId,
-          question_id: questionIdForRound,
+          question_id: currentQuestion.question_id,
           question_index: questionIndex,
           selected_answer: null,
           is_correct: false,
@@ -249,15 +214,9 @@ const duelSessionService = {
           .insert(autoSubmissions);
         if (insertError) throw insertError;
       }
-      return true;
     } catch (error) {
       console.error('Error auto-submitting unanswered:', error);
-      return false;
     }
-  },
-
-  async checkBothCompleted(sessionId, questionIndex) {
-    return await this.checkBothAnswered(sessionId, questionIndex);
   },
 
   async calculateFinalResults(sessionId) {
@@ -266,53 +225,36 @@ const duelSessionService = {
         .from('duel_answers')
         .select('user_id, is_correct, answer_time_ms')
         .eq('session_id', sessionId);
-      if (error) throw error;
-      if (!answers || answers.length < 1) return null;
-
+      if (error || !answers || answers.length < 1) return null;
       const userScores = {};
-      answers.forEach((answer) => {
-        if (!userScores[answer.user_id]) {
-          userScores[answer.user_id] = {
-            correctAnswers: 0,
-            totalTime: 0,
-            totalQuestions: 0,
-          };
-        }
-        userScores[answer.user_id].totalQuestions++;
-        if (answer.is_correct) userScores[answer.user_id].correctAnswers++;
-        userScores[answer.user_id].totalTime += answer.answer_time_ms || 30000;
+      const { data: session, error: sessionError } = await supabase
+        .from('duel_sessions')
+        .select('duel_id')
+        .eq('session_id', sessionId)
+        .single();
+      if (sessionError) return null;
+      const { data: duel, error: duelError } = await supabase
+        .from('duels')
+        .select('initiator_id, opponent_id')
+        .eq('duel_id', session.duel_id)
+        .single();
+      if (duelError) return null;
+
+      const allPlayerIds = [duel.initiator_id, duel.opponent_id];
+      allPlayerIds.forEach((id) => {
+        userScores[id] = { correctAnswers: 0, totalTime: 0, totalQuestions: 0 };
       });
 
-      const userIds = Object.keys(userScores);
-      // Ensure we have results for both players before proceeding
-      if (userIds.length < 2) {
-        const { data: session, error: sessionError } = await supabase
-          .from('duel_sessions')
-          .select('duel_id')
-          .eq('session_id', sessionId)
-          .single();
-        if (sessionError) return null;
-        const { data: duel, error: duelError } = await supabase
-          .from('duels')
-          .select('initiator_id, opponent_id')
-          .eq('duel_id', session.duel_id)
-          .single();
-        if (duelError) return null;
+      answers.forEach((answer) => {
+        if (userScores[answer.user_id]) {
+          userScores[answer.user_id].totalQuestions++;
+          if (answer.is_correct) userScores[answer.user_id].correctAnswers++;
+          userScores[answer.user_id].totalTime +=
+            answer.answer_time_ms || 30000;
+        }
+      });
 
-        const allPlayerIds = [duel.initiator_id, duel.opponent_id];
-        allPlayerIds.forEach((id) => {
-          if (!userScores[id]) {
-            userScores[id] = {
-              correctAnswers: 0,
-              totalTime: 0,
-              totalQuestions: 0,
-            };
-            userIds.push(id.toString());
-          }
-        });
-      }
-
-      const [user1Id, user2Id] = userIds;
+      const [user1Id, user2Id] = allPlayerIds.map(String);
       const user1Score = userScores[user1Id];
       const user2Score = userScores[user2Id];
       let winnerId = null;
@@ -345,7 +287,7 @@ const duelSessionService = {
       };
     } catch (error) {
       console.error('Error calculating final results:', error);
-      throw error;
+      return null;
     }
   },
 
@@ -357,27 +299,23 @@ const duelSessionService = {
         .eq('session_id', sessionId)
         .single();
       if (sessionError) throw sessionError;
-
       await supabase
         .from('duel_sessions')
         .update({ status: 'completed', ended_at: new Date().toISOString() })
         .eq('session_id', sessionId);
       await duelModel.complete(session.duel_id);
-
       const { user1, user2, winnerId } = finalResults;
       const duel = await duelModel.getById(session.duel_id);
       let initiatorScore =
         user1.userId === duel.initiator_id ? user1.score : user2.score;
       let opponentScore =
         user1.userId === duel.opponent_id ? user1.score : user2.score;
-
-      const result = await duelResultModel.create(
+      await duelResultModel.create(
         session.duel_id,
         winnerId,
         initiatorScore,
         opponentScore,
       );
-
       if (winnerId) {
         await this.updateUserStats(winnerId, true);
         const loserId = winnerId === user1.userId ? user2.userId : user1.userId;
@@ -386,10 +324,8 @@ const duelSessionService = {
         await this.updateUserStats(user1.userId, null);
         await this.updateUserStats(user2.userId, null);
       }
-      return { sessionId, duelId: session.duel_id, finalResults, result };
     } catch (error) {
       console.error('Error completing duel session:', error);
-      throw error;
     }
   },
 
@@ -413,13 +349,11 @@ const duelSessionService = {
           total_duels: supabase.raw('total_duels + 1'),
           current_losing_streak: 0,
         };
-
       const { error } = await supabase
         .from('users')
         .update(updateData)
         .eq('user_id', userId);
       if (error) throw error;
-
       if (won === false) {
         const { data: user, error: userError } = await supabase
           .from('users')
@@ -438,7 +372,6 @@ const duelSessionService = {
       }
     } catch (error) {
       console.error('Error updating user stats:', error);
-      throw error;
     }
   },
 };
