@@ -1,103 +1,154 @@
-// routes/analyticsRoutes.js - Complete with enhanced topic support and answer explanations
-
 const express = require('express');
 const router = express.Router();
 const analyticsController = require('../controllers/analyticsController');
-// Replace the old auth middleware with the new one
 const authSupabase = require('../middleware/authSupabase');
-const { authorize, authorizePermission } = require('../middleware/authorize');
 
 /**
  * @swagger
  * tags:
  *   name: Analytics
- *   description: User learning analytics with enhanced topic support
+ *   description: Enhanced study analytics with streaks, progress charts, and comparative metrics
  */
+
+// ===============================
+// STREAK ANALYTICS ROUTES
+// ===============================
 
 /**
  * @swagger
- * /api/analytics/dashboard:
+ * /api/analytics/streaks/longest:
  *   get:
- *     summary: Get user dashboard analytics
+ *     summary: Get user's longest study streaks by topic and course
  *     tags: [Analytics]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: User dashboard analytics with enhanced topic data
+ *         description: Longest streaks data
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 recentStudyTime:
- *                   type: integer
- *                   description: Recent study time in seconds
- *                 recentStudyTimeHours:
- *                   type: number
- *                   description: Recent study time in hours
- *                 dailyStudyTime:
+ *                 streaks:
  *                   type: array
- *                   description: Daily study time for the past week
- *                 duelStats:
- *                   type: object
- *                   properties:
- *                     totalDuels:
- *                       type: integer
- *                     wins:
- *                       type: integer
- *                     losses:
- *                       type: integer
- *                     winRate:
- *                       type: string
- *                 problematicTopics:
- *                   type: array
- *                   description: Topics with highest error rates
- *                 topicAnalytics:
- *                   type: array
- *                   description: Top 5 most studied topics with analytics including test performance
  *                   items:
  *                     type: object
  *                     properties:
- *                       topicId:
- *                         type: integer
- *                       topicTitle:
+ *                       streak_type:
  *                         type: string
- *                       totalDuration:
+ *                         enum: [topic, course, daily_study]
+ *                       topic_title:
+ *                         type: string
+ *                       course_title:
+ *                         type: string
+ *                       longest_streak_seconds:
  *                         type: integer
- *                       totalDurationHours:
+ *                       longest_streak_minutes:
  *                         type: number
- *                       accuracyRate:
+ *                       longest_streak_hours:
+ *                         type: number
+ *                       longest_streak_date:
  *                         type: string
- *                       correctAnswers:
- *                         type: integer
- *                       totalAttempts:
- *                         type: integer
- *                       testAccuracy:
- *                         type: string
- *                         description: Test-specific accuracy rate
- *                       testsTaken:
- *                         type: integer
- *                         description: Number of tests taken for this topic
- *                       avgTestScore:
- *                         type: string
- *                         description: Average test score for this topic
+ *                         format: date
  *       401:
  *         description: Unauthorized
  */
-router.get('/dashboard', authSupabase, analyticsController.getUserDashboard);
+router.get(
+  '/streaks/longest',
+  authSupabase,
+  analyticsController.getUserLongestStreaks,
+);
 
 /**
  * @swagger
- * /api/analytics/weekly-progress:
+ * /api/analytics/streaks/summary:
  *   get:
- *     summary: Get user's weekly progress
+ *     summary: Get user's streaks summary with key metrics
  *     tags: [Analytics]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: User's weekly progress
+ *         description: Streaks summary data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 longest_single_session_minutes:
+ *                   type: number
+ *                 longest_single_session_topic:
+ *                   type: string
+ *                 longest_single_session_course:
+ *                   type: string
+ *                 longest_topic_streak_minutes:
+ *                   type: number
+ *                 longest_course_streak_minutes:
+ *                   type: number
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+  '/streaks/summary',
+  authSupabase,
+  analyticsController.getUserStreaksSummary,
+);
+
+/**
+ * @swagger
+ * /api/analytics/streaks/analytics:
+ *   get:
+ *     summary: Get detailed streaks analytics from view
+ *     tags: [Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Detailed streaks analytics
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+  '/streaks/analytics',
+  authSupabase,
+  analyticsController.getLongestStreaksAnalytics,
+);
+
+// ===============================
+// PROGRESS ANALYTICS ROUTES
+// ===============================
+
+/**
+ * @swagger
+ * /api/analytics/progress/daily:
+ *   get:
+ *     summary: Get user's daily progress data for charts
+ *     tags: [Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Start date (YYYY-MM-DD)
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: End date (YYYY-MM-DD)
+ *       - in: query
+ *         name: days
+ *         schema:
+ *           type: integer
+ *           default: 30
+ *         description: Number of days back if dates not provided
+ *     responses:
+ *       200:
+ *         description: Daily progress data
  *         content:
  *           application/json:
  *             schema:
@@ -108,180 +159,93 @@ router.get('/dashboard', authSupabase, analyticsController.getUserDashboard);
  *                   items:
  *                     type: object
  *                     properties:
- *                       date:
+ *                       study_date:
  *                         type: string
  *                         format: date
- *                       totalDuration:
- *                         type: integer
- *                         description: Study time in seconds
- *                       totalDurationHours:
+ *                       daily_study_minutes:
  *                         type: number
- *                         description: Study time in hours
+ *                       daily_sessions:
+ *                         type: integer
+ *                       daily_topics_studied:
+ *                         type: integer
+ *                       daily_questions_answered:
+ *                         type: integer
+ *                       daily_accuracy_percentage:
+ *                         type: number
+ *                 dateRange:
+ *                   type: object
+ *                   properties:
+ *                     startDate:
+ *                       type: string
+ *                     endDate:
+ *                       type: string
  *       401:
  *         description: Unauthorized
  */
 router.get(
-  '/weekly-progress',
+  '/progress/daily',
   authSupabase,
-  analyticsController.getWeeklyProgress,
+  analyticsController.getUserDailyProgress,
 );
 
 /**
  * @swagger
- * /api/analytics/topics:
+ * /api/analytics/progress/weekly:
  *   get:
- *     summary: Get topic-based analytics with enhanced test data
+ *     summary: Get user's weekly progress data for charts
  *     tags: [Analytics]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: weeksBack
+ *         schema:
+ *           type: integer
+ *           default: 12
+ *         description: Number of weeks back to retrieve
  *     responses:
  *       200:
- *         description: Topic-based analytics including test performance
+ *         description: Weekly progress data
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 topicAnalytics:
+ *                 weeklyProgress:
  *                   type: array
  *                   items:
  *                     type: object
  *                     properties:
- *                       topicId:
- *                         type: integer
- *                       topicTitle:
+ *                       week_start:
  *                         type: string
- *                       totalDuration:
- *                         type: integer
- *                       totalDurationHours:
+ *                         format: date
+ *                       week_end:
+ *                         type: string
+ *                         format: date
+ *                       weekly_study_hours:
  *                         type: number
- *                       accuracyRate:
- *                         type: string
- *                       correctAnswers:
+ *                       weekly_sessions:
  *                         type: integer
- *                       totalAttempts:
+ *                       weekly_topics_studied:
  *                         type: integer
- *                       testAccuracy:
- *                         type: string
- *                         description: Test-specific accuracy rate
- *                       testsTaken:
- *                         type: integer
- *                         description: Number of tests taken for this topic
- *                       avgTestScore:
- *                         type: string
- *                         description: Average test score for this topic
- *       401:
- *         description: Unauthorized
- */
-router.get('/topics', authSupabase, analyticsController.getTopicAnalytics);
-
-/**
- * @swagger
- * /api/analytics/test-topics:
- *   get:
- *     summary: Get test performance analytics specifically by topic
- *     tags: [Analytics]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Test performance analytics by topic
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 testTopicAnalytics:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       topic_id:
- *                         type: integer
- *                       topic_title:
- *                         type: string
- *                       test_accuracy:
+ *                       weekly_consistency_percentage:
  *                         type: number
- *                         description: Average test accuracy for this topic
- *                       tests_taken:
- *                         type: integer
- *                         description: Number of tests taken for this topic
- *                       avg_test_score:
+ *                       weekly_accuracy_percentage:
  *                         type: number
- *                         description: Average test score for this topic
  *       401:
  *         description: Unauthorized
  */
 router.get(
-  '/test-topics',
+  '/progress/weekly',
   authSupabase,
-  analyticsController.getTestTopicAnalytics,
+  analyticsController.getUserWeeklyProgress,
 );
 
 /**
  * @swagger
- * /api/analytics/user-performance:
+ * /api/analytics/progress/daily-analytics:
  *   get:
- *     summary: Get user performance analytics with enhanced test data
- *     tags: [Analytics]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: User performance analytics including test performance by topic
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 branchPerformance:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       branchId:
- *                         type: integer
- *                       branchName:
- *                         type: string
- *                       averageScore:
- *                         type: number
- *                       totalQuestions:
- *                         type: integer
- *                       correctAnswers:
- *                         type: integer
- *                       testAccuracy:
- *                         type: number
- *                         description: Test-specific accuracy
- *                       testsTaken:
- *                         type: integer
- *                         description: Number of tests taken
- *                       avgTestScore:
- *                         type: number
- *                         description: Average test score
- *                 totalQuestionsAnswered:
- *                   type: integer
- *                 overallAccuracy:
- *                   type: number
- *                 studyTime:
- *                   type: integer
- *                 studySessions:
- *                   type: integer
- *                 averageSessionDuration:
- *                   type: number
- *       401:
- *         description: Unauthorized
- */
-router.get(
-  '/user-performance',
-  authSupabase,
-  analyticsController.getUserPerformance,
-);
-
-/**
- * @swagger
- * /api/analytics/activity:
- *   get:
- *     summary: Get user activity timeline
+ *     summary: Get daily progress analytics from view
  *     tags: [Analytics]
  *     security:
  *       - bearerAuth: []
@@ -290,170 +254,56 @@ router.get(
  *         name: days
  *         schema:
  *           type: integer
- *           default: 7
- *         description: Number of days to retrieve data for (default 7)
+ *           default: 30
+ *         description: Number of days back
  *     responses:
  *       200:
- *         description: User activity timeline
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   date:
- *                     type: string
- *                     format: date
- *                   studyTime:
- *                     type: integer
- *                     description: Study time in seconds
- *                   questionsAnswered:
- *                     type: integer
+ *         description: Daily progress analytics
  *       401:
  *         description: Unauthorized
  */
-router.get('/activity', authSupabase, analyticsController.getActivityTimeline);
+router.get(
+  '/progress/daily-analytics',
+  authSupabase,
+  analyticsController.getDailyProgressAnalytics,
+);
 
 /**
  * @swagger
- * /api/analytics/weakest-topics:
+ * /api/analytics/progress/weekly-analytics:
  *   get:
- *     summary: Get user's weakest topics
+ *     summary: Get weekly progress analytics from view
  *     tags: [Analytics]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
- *         name: limit
+ *         name: weeks
  *         schema:
  *           type: integer
- *           default: 5
- *         description: Maximum number of topics to return (default 5)
+ *           default: 12
+ *         description: Number of weeks back
  *     responses:
  *       200:
- *         description: User's weakest topics
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   topicId:
- *                     type: integer
- *                   topicName:
- *                     type: string
- *                   branchId:
- *                     type: integer
- *                   branchName:
- *                     type: string
- *                   averageScore:
- *                     type: number
- *                   totalQuestions:
- *                     type: integer
- *                   correctAnswers:
- *                     type: integer
+ *         description: Weekly progress analytics
  *       401:
  *         description: Unauthorized
  */
 router.get(
-  '/weakest-topics',
+  '/progress/weekly-analytics',
   authSupabase,
-  analyticsController.getWeakestTopics,
+  analyticsController.getWeeklyProgressAnalytics,
 );
+
+// ===============================
+// COURSE ANALYTICS ROUTES
+// ===============================
 
 /**
  * @swagger
- * /api/analytics/improvement:
+ * /api/analytics/courses/top:
  *   get:
- *     summary: Get user improvement metrics
- *     tags: [Analytics]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: User improvement metrics
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 previousAverage:
- *                   type: number
- *                 currentAverage:
- *                   type: number
- *                 percentageChange:
- *                   type: number
- *                 topicImprovements:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       topicId:
- *                         type: integer
- *                       topicName:
- *                         type: string
- *                       previousAccuracy:
- *                         type: number
- *                       currentAccuracy:
- *                         type: number
- *                       percentageChange:
- *                         type: number
- *       401:
- *         description: Unauthorized
- */
-router.get(
-  '/improvement',
-  authSupabase,
-  analyticsController.getImprovementMetrics,
-);
-
-/**
- * @swagger
- * /api/analytics/study-time-distribution:
- *   get:
- *     summary: Get distribution of study time
- *     tags: [Analytics]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Study time distribution
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 morning:
- *                   type: integer
- *                   description: Study time in morning (5 AM - 12 PM) in seconds
- *                 afternoon:
- *                   type: integer
- *                   description: Study time in afternoon (12 PM - 5 PM) in seconds
- *                 evening:
- *                   type: integer
- *                   description: Study time in evening (5 PM - 9 PM) in seconds
- *                 night:
- *                   type: integer
- *                   description: Study time at night (9 PM - 5 AM) in seconds
- *                 totalHours:
- *                   type: number
- *                   description: Total study time in hours
- *       401:
- *         description: Unauthorized
- */
-router.get(
-  '/study-time-distribution',
-  authSupabase,
-  analyticsController.getStudyTimeDistribution,
-);
-
-/**
- * @swagger
- * /api/analytics/answer-explanations:
- *   get:
- *     summary: Get recent incorrect answers with explanations and topic information for learning insights
+ *     summary: Get user's top courses by time spent (study sessions + duels)
  *     tags: [Analytics]
  *     security:
  *       - bearerAuth: []
@@ -463,234 +313,336 @@ router.get(
  *         schema:
  *           type: integer
  *           default: 10
- *         description: Maximum number of answers to return
+ *         description: Maximum number of courses to return
  *     responses:
  *       200:
- *         description: Recent incorrect answers with explanations including topic information
+ *         description: Top courses by time spent
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 incorrectAnswers:
+ *                 topCourses:
  *                   type: array
  *                   items:
  *                     type: object
  *                     properties:
- *                       answerId:
+ *                       course_id:
  *                         type: integer
- *                       questionText:
+ *                       course_title:
  *                         type: string
- *                       userAnswer:
- *                         type: string
- *                       correctAnswer:
- *                         type: string
- *                       explanation:
- *                         type: string
- *                         description: Explanation of why the correct answer is correct
- *                       options:
- *                         type: object
- *                         description: Question options/choices
- *                       testTitle:
- *                         type: string
- *                       courseTitle:
- *                         type: string
- *                       topicId:
+ *                       total_time_hours:
+ *                         type: number
+ *                       study_session_hours:
+ *                         type: number
+ *                       duel_hours:
+ *                         type: number
+ *                       topics_studied:
  *                         type: integer
- *                         description: ID of the topic this question belongs to
- *                       topicTitle:
- *                         type: string
- *                         description: Title of the topic this question belongs to
- *                       topicDescription:
- *                         type: string
- *                         description: Description of the topic this question belongs to
- *                       answeredAt:
- *                         type: string
- *                         format: date-time
+ *                       accuracy_percentage:
+ *                         type: number
+ *                       rank:
+ *                         type: integer
  *       401:
  *         description: Unauthorized
  */
-router.get(
-  '/answer-explanations',
-  authSupabase,
-  analyticsController.getAnswerExplanations,
-);
+router.get('/courses/top', authSupabase, analyticsController.getUserTopCourses);
 
-// ADMIN ROUTES
 /**
  * @swagger
- * /api/analytics/admin/overview:
+ * /api/analytics/courses/most-studied:
  *   get:
- *     summary: Get admin analytics overview with enhanced topic test data (admin only)
+ *     summary: Get most time spent course details
  *     tags: [Analytics]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Admin analytics overview including test topic statistics
+ *         description: Most studied course data
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+  '/courses/most-studied',
+  authSupabase,
+  analyticsController.getMostTimeSpentCourse,
+);
+
+/**
+ * @swagger
+ * /api/analytics/courses/analytics:
+ *   get:
+ *     summary: Get comprehensive course analytics from view
+ *     tags: [Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Course analytics data
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+  '/courses/analytics',
+  authSupabase,
+  analyticsController.getMostTimeSpentCourseAnalytics,
+);
+
+// ===============================
+// COMPARATIVE ANALYTICS ROUTES
+// ===============================
+
+/**
+ * @swagger
+ * /api/analytics/comparative:
+ *   get:
+ *     summary: Get user performance compared to platform average
+ *     tags: [Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Comparative analytics data
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 usersStats:
- *                   type: object
- *                   properties:
- *                     totalUsers:
- *                       type: integer
- *                     newUsersLast30Days:
- *                       type: integer
- *                     activeUsersLast7Days:
- *                       type: integer
- *                 studyStats:
- *                   type: object
- *                   properties:
- *                     totalHours:
- *                       type: number
- *                     averagePerUser:
- *                       type: number
- *                 topUsers:
+ *                 comparison:
  *                   type: array
  *                   items:
  *                     type: object
  *                     properties:
- *                       userId:
- *                         type: integer
- *                       username:
+ *                       metric_name:
  *                         type: string
- *                       totalStudyTime:
+ *                       user_value:
  *                         type: number
- *                       accuracy:
- *                         type: string
- *                 testTopicStats:
- *                   type: array
- *                   description: Test statistics by topic
- *                   items:
- *                     type: object
- *                     properties:
- *                       topicId:
+ *                       platform_average:
+ *                         type: number
+ *                       user_rank:
  *                         type: integer
- *                       topicTitle:
- *                         type: string
- *                       totalTests:
+ *                       total_users:
  *                         type: integer
- *                         description: Number of tests available for this topic
- *                       testAttempts:
- *                         type: integer
- *                         description: Total test attempts for this topic
- *                       avgScore:
- *                         type: string
- *                         description: Average score across all users for this topic
+ *                       percentile:
+ *                         type: number
  *       401:
  *         description: Unauthorized
- *       403:
- *         description: Forbidden - insufficient permissions
  */
 router.get(
-  '/admin/overview',
+  '/comparative',
   authSupabase,
-  authorizePermission('view_analytics'),
-  analyticsController.getAdminAnalyticsOverview,
+  analyticsController.getUserComparativeAnalytics,
 );
 
 /**
  * @swagger
- * /api/analytics/admin/user-performance:
+ * /api/analytics/recent-activity:
  *   get:
- *     summary: Get user performance analytics with enhanced topic test data (admin/instructor only)
+ *     summary: Get user's recent activity summary
  *     tags: [Analytics]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
- *         name: userId
+ *         name: daysBack
  *         schema:
  *           type: integer
- *         description: Optional user ID to filter by specific user
+ *           default: 7
+ *         description: Number of days back to analyze
  *     responses:
  *       200:
- *         description: User performance analytics including topic test breakdown
+ *         description: Recent activity summary
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   period_name:
+ *                     type: string
+ *                   total_study_minutes:
+ *                     type: number
+ *                   total_sessions:
+ *                     type: integer
+ *                   unique_topics:
+ *                     type: integer
+ *                   unique_courses:
+ *                     type: integer
+ *                   total_questions:
+ *                     type: integer
+ *                   accuracy_percentage:
+ *                     type: number
+ *                   consistency_days:
+ *                     type: integer
+ *                   best_day:
+ *                     type: string
+ *                   best_day_minutes:
+ *                     type: number
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+  '/recent-activity',
+  authSupabase,
+  analyticsController.getUserRecentActivity,
+);
+
+// ===============================
+// DASHBOARD ANALYTICS ROUTES
+// ===============================
+
+/**
+ * @swagger
+ * /api/analytics/dashboard:
+ *   get:
+ *     summary: Get comprehensive dashboard analytics
+ *     tags: [Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Dashboard analytics data
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 userPerformance:
- *                   oneOf:
- *                     - type: object
- *                       description: Single user performance (when userId provided)
- *                       properties:
- *                         user_id:
- *                           type: integer
- *                         username:
- *                           type: string
- *                         email:
- *                           type: string
- *                         total_duels:
- *                           type: integer
- *                         duels_won:
- *                           type: integer
- *                         duels_lost:
- *                           type: integer
- *                         total_study_time:
- *                           type: integer
- *                         total_sessions:
- *                           type: integer
- *                         avg_test_score:
- *                           type: number
- *                         topicBreakdown:
- *                           type: array
- *                           description: Topic breakdown including test performance
- *                           items:
- *                             type: object
- *                             properties:
- *                               topic_id:
- *                                 type: integer
- *                               topic_title:
- *                                 type: string
- *                               study_duration:
- *                                 type: integer
- *                               total_answers:
- *                                 type: integer
- *                               correct_answers:
- *                                 type: integer
- *                               tests_taken:
- *                                 type: integer
- *                               avg_test_score:
- *                                 type: string
- *                     - type: array
- *                       description: All users performance (when no userId provided)
- *                       items:
- *                         type: object
- *                         properties:
- *                           user_id:
- *                             type: integer
- *                           username:
- *                             type: string
- *                           email:
- *                             type: string
- *                           total_duels:
- *                             type: integer
- *                           duels_won:
- *                             type: integer
- *                           duels_lost:
- *                             type: integer
- *                           total_study_time:
- *                             type: integer
- *                           total_sessions:
- *                             type: integer
- *                           avg_test_score:
- *                             type: number
+ *                 total_study_hours:
+ *                   type: number
+ *                 total_sessions:
+ *                   type: integer
+ *                 unique_topics_studied:
+ *                   type: integer
+ *                 unique_courses_studied:
+ *                   type: integer
+ *                 longest_session_minutes:
+ *                   type: number
+ *                 average_session_minutes:
+ *                   type: number
+ *                 current_streak_days:
+ *                   type: integer
+ *                 longest_streak_days:
+ *                   type: integer
+ *                 most_studied_course:
+ *                   type: string
+ *                 most_studied_topic:
+ *                   type: string
+ *                 last_study_date:
+ *                   type: string
+ *                 last_7_days_hours:
+ *                   type: number
+ *                 last_30_days_hours:
+ *                   type: number
  *       401:
  *         description: Unauthorized
- *       403:
- *         description: Forbidden - insufficient permissions
  */
 router.get(
-  '/admin/user-performance',
+  '/dashboard',
   authSupabase,
-  authorizePermission('view_analytics'),
-  analyticsController.getUserPerformanceAnalytics,
+  analyticsController.getUserDashboardAnalytics,
+);
+
+/**
+ * @swagger
+ * /api/analytics/summary:
+ *   get:
+ *     summary: Get analytics summary with key metrics
+ *     tags: [Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Analytics summary
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+  '/summary',
+  authSupabase,
+  analyticsController.getUserAnalyticsSummary,
+);
+
+/**
+ * @swagger
+ * /api/analytics/all:
+ *   get:
+ *     summary: Get comprehensive analytics data in one call
+ *     tags: [Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: daysBack
+ *         schema:
+ *           type: integer
+ *           default: 30
+ *         description: Days back for daily progress
+ *       - in: query
+ *         name: weeksBack
+ *         schema:
+ *           type: integer
+ *           default: 12
+ *         description: Weeks back for weekly progress
+ *     responses:
+ *       200:
+ *         description: Comprehensive analytics data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 dashboard:
+ *                   type: object
+ *                   description: Dashboard analytics
+ *                 summary:
+ *                   type: object
+ *                   description: Summary analytics
+ *                 longestStreaks:
+ *                   type: array
+ *                   description: Longest streaks data
+ *                 dailyProgress:
+ *                   type: array
+ *                   description: Daily progress data
+ *                 weeklyProgress:
+ *                   type: array
+ *                   description: Weekly progress data
+ *                 topCourses:
+ *                   type: array
+ *                   description: Top courses data
+ *                 comparative:
+ *                   type: array
+ *                   description: Comparative analytics
+ *                 recentActivity:
+ *                   type: array
+ *                   description: Recent activity summary
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/all', authSupabase, analyticsController.getAllUserAnalytics);
+
+// ===============================
+// LEGACY COMPATIBILITY ROUTES
+// ===============================
+
+/**
+ * @swagger
+ * /api/analytics/dashboard-legacy:
+ *   get:
+ *     summary: Legacy dashboard endpoint for backward compatibility
+ *     tags: [Analytics]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Legacy dashboard data
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+  '/dashboard-legacy',
+  authSupabase,
+  analyticsController.getUserDashboard,
 );
 
 module.exports = router;
