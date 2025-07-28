@@ -14,58 +14,48 @@ const analyticsController = {
     try {
       const userId = req.user.userId;
 
-      // Query existing study sessions table to calculate streaks
-      const { data: sessions, error } = await supabase
-        .from('user_topic_study_sessions')
+      // Query the user_longest_streaks table directly
+      const { data: streaksData, error: streaksError } = await supabase
+        .from('user_longest_streaks')
         .select(
           `
-          session_id,
-          duration_seconds,
-          session_date,
-          start_time,
+          streak_id,
+          user_id,
+          topic_id,
+          course_id,
+          streak_type,
+          longest_streak_seconds,
+          longest_streak_date,
           topics:topic_id (
             topic_id,
-            title,
-            courses:course_id (
-              course_id,
-              title
-            )
+            title
+          ),
+          courses:course_id (
+            course_id,
+            title
           )
         `,
         )
         .eq('user_id', userId)
-        .eq('status', 'completed')
-        .not('duration_seconds', 'is', null)
-        .order('session_date', { ascending: false })
-        .limit(100);
+        .order('longest_streak_seconds', { ascending: false });
 
-      if (error) throw error;
-
-      // Calculate longest streaks from sessions data
-      const streaks = [];
-
-      if (sessions && sessions.length > 0) {
-        // Find longest single session
-        const longestSession = sessions.reduce((max, session) =>
-          (session.duration_seconds || 0) > (max.duration_seconds || 0)
-            ? session
-            : max,
-        );
-
-        if (longestSession.duration_seconds > 0) {
-          streaks.push({
-            streak_type: 'single_session',
-            topic_title: longestSession.topics?.title || 'Unknown',
-            course_title: longestSession.topics?.courses?.title || 'Unknown',
-            longest_streak_seconds: longestSession.duration_seconds,
-            longest_streak_minutes:
-              Math.round((longestSession.duration_seconds / 60) * 10) / 10,
-            longest_streak_hours:
-              Math.round((longestSession.duration_seconds / 3600) * 100) / 100,
-            longest_streak_date: longestSession.session_date,
-          });
-        }
+      if (streaksError) {
+        console.error('Error fetching user longest streaks:', streaksError);
+        throw streaksError;
       }
+
+      // Transform data to match expected interface
+      const streaks = (streaksData || []).map((streak) => ({
+        streak_type: streak.streak_type,
+        topic_title: streak.topics?.title || null,
+        course_title: streak.courses?.title || null,
+        longest_streak_seconds: streak.longest_streak_seconds || 0,
+        longest_streak_minutes:
+          Math.round(((streak.longest_streak_seconds || 0) / 60) * 10) / 10,
+        longest_streak_hours:
+          Math.round(((streak.longest_streak_seconds || 0) / 3600) * 100) / 100,
+        longest_streak_date: streak.longest_streak_date,
+      }));
 
       console.log(
         `User ${userId} (${req.user.email}) accessed longest streaks analytics`,
@@ -85,19 +75,25 @@ const analyticsController = {
     try {
       const userId = req.user.userId;
 
-      // Query existing study sessions
-      const { data: sessions, error } = await supabase
-        .from('user_topic_study_sessions')
+      // Get the longest single session from streaks table
+      const { data: longestSession, error: sessionError } = await supabase
+        .from('user_longest_streaks')
         .select(
-          'duration_seconds, session_date, topics:topic_id(title, courses:course_id(title))',
+          `
+          longest_streak_seconds,
+          topics:topic_id (title),
+          courses:course_id (title)
+        `,
         )
         .eq('user_id', userId)
-        .eq('status', 'completed')
-        .not('duration_seconds', 'is', null)
-        .order('duration_seconds', { ascending: false })
-        .limit(50);
+        .eq('streak_type', 'topic')
+        .order('longest_streak_seconds', { ascending: false })
+        .limit(1);
 
-      if (error) throw error;
+      if (sessionError) {
+        console.error('Error fetching streaks summary:', sessionError);
+        throw sessionError;
+      }
 
       let summary = {
         longest_single_session_minutes: 0,
@@ -107,16 +103,14 @@ const analyticsController = {
         longest_course_streak_minutes: 0,
       };
 
-      if (sessions && sessions.length > 0) {
-        const longestSession = sessions[0];
+      if (longestSession && longestSession.length > 0) {
+        const session = longestSession[0];
         summary.longest_single_session_minutes =
-          Math.round((longestSession.duration_seconds / 60) * 10) / 10;
-        summary.longest_single_session_topic = longestSession.topics?.title;
-        summary.longest_single_session_course =
-          longestSession.topics?.courses?.title;
+          Math.round((session.longest_streak_seconds / 60) * 10) / 10;
+        summary.longest_single_session_topic = session.topics?.title;
+        summary.longest_single_session_course = session.courses?.title;
 
-        // For now, set topic and course streaks to the same value
-        // In a full implementation, you'd calculate consecutive study days
+        // Set topic and course streaks to the same value for now
         summary.longest_topic_streak_minutes =
           summary.longest_single_session_minutes;
         summary.longest_course_streak_minutes =
@@ -161,17 +155,19 @@ const analyticsController = {
         .from('user_topic_study_sessions')
         .select('session_date, duration_seconds, topic_id')
         .eq('user_id', userId)
-        .eq('status', 'completed')
         .gte('session_date', start)
         .lte('session_date', end)
         .not('duration_seconds', 'is', null);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching daily progress:', error);
+        throw error;
+      }
 
       // Group sessions by date
       const dailyMap = new Map();
 
-      sessions?.forEach((session) => {
+      (sessions || []).forEach((session) => {
         const date = session.session_date;
         if (!dailyMap.has(date)) {
           dailyMap.set(date, {
@@ -190,7 +186,7 @@ const analyticsController = {
         dayData.daily_topics_studied.add(session.topic_id);
       });
 
-      // Convert to array and finalize data
+      // Convert to array and fill in missing days
       const dailyProgress = [];
       for (
         let d = new Date(start);
@@ -251,17 +247,19 @@ const analyticsController = {
         .from('user_topic_study_sessions')
         .select('session_date, duration_seconds, topic_id')
         .eq('user_id', userId)
-        .eq('status', 'completed')
         .gte('session_date', startDate.toISOString().split('T')[0])
         .lte('session_date', endDate.toISOString().split('T')[0])
         .not('duration_seconds', 'is', null);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching weekly progress:', error);
+        throw error;
+      }
 
       // Group by weeks
       const weeklyMap = new Map();
 
-      sessions?.forEach((session) => {
+      (sessions || []).forEach((session) => {
         const sessionDate = new Date(session.session_date);
         const weekStart = new Date(sessionDate);
         weekStart.setDate(sessionDate.getDate() - sessionDate.getDay()); // Start of week (Sunday)
@@ -318,7 +316,7 @@ const analyticsController = {
   // COURSE ANALYTICS
   // ===============================
 
-  // Get user top courses by time spent
+  // Get user's top courses by time spent
   async getUserTopCourses(req, res) {
     try {
       const userId = req.user.userId;
@@ -342,15 +340,17 @@ const analyticsController = {
         `,
         )
         .eq('user_id', userId)
-        .eq('status', 'completed')
         .not('duration_seconds', 'is', null);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching top courses:', error);
+        throw error;
+      }
 
       // Group by course
       const courseMap = new Map();
 
-      sessions?.forEach((session) => {
+      (sessions || []).forEach((session) => {
         const course = session.topics?.courses;
         if (!course) return;
 
@@ -450,10 +450,187 @@ const analyticsController = {
   },
 
   // ===============================
-  // SIMPLIFIED IMPLEMENTATIONS
+  // DASHBOARD ANALYTICS
   // ===============================
 
-  // Get user comparative analytics (simplified)
+  // Get comprehensive dashboard analytics
+  async getUserDashboardAnalytics(req, res) {
+    try {
+      const userId = req.user.userId;
+
+      // Query basic session data
+      const { data: sessions, error } = await supabase
+        .from('user_topic_study_sessions')
+        .select('duration_seconds, session_date, topic_id')
+        .eq('user_id', userId)
+        .not('duration_seconds', 'is', null)
+        .order('session_date', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching dashboard analytics:', error);
+        throw error;
+      }
+
+      const totalHours = (sessions || []).reduce(
+        (sum, s) => sum + (s.duration_seconds || 0) / 3600,
+        0,
+      );
+      const totalSessions = (sessions || []).length;
+      const uniqueTopics = new Set((sessions || []).map((s) => s.topic_id))
+        .size;
+      const longestSessionMinutes =
+        Math.max(...((sessions || []).map((s) => s.duration_seconds) || [0])) /
+        60;
+      const averageSessionMinutes =
+        totalSessions > 0 ? (totalHours * 60) / totalSessions : 0;
+
+      // Calculate recent study time
+      const last7Days = new Date();
+      last7Days.setDate(last7Days.getDate() - 7);
+      const last30Days = new Date();
+      last30Days.setDate(last30Days.getDate() - 30);
+
+      const recent7DaysHours = (sessions || [])
+        .filter((s) => new Date(s.session_date) >= last7Days)
+        .reduce((sum, s) => sum + (s.duration_seconds || 0) / 3600, 0);
+
+      const recent30DaysHours = (sessions || [])
+        .filter((s) => new Date(s.session_date) >= last30Days)
+        .reduce((sum, s) => sum + (s.duration_seconds || 0) / 3600, 0);
+
+      const dashboard = {
+        total_study_hours: Math.round(totalHours * 100) / 100,
+        total_sessions: totalSessions,
+        unique_topics_studied: uniqueTopics,
+        unique_courses_studied: 1, // Would need course data
+        longest_session_minutes: Math.round(longestSessionMinutes * 10) / 10,
+        average_session_minutes: Math.round(averageSessionMinutes * 10) / 10,
+        current_streak_days: 0, // Would need to calculate consecutive days
+        longest_streak_days: 0, // Would need to calculate
+        most_studied_course: 'Restoratif Diş Tedavisi', // From your logs
+        most_studied_topic: null,
+        last_study_date: (sessions || [])[0]?.session_date || null,
+        last_7_days_hours: Math.round(recent7DaysHours * 100) / 100,
+        last_30_days_hours: Math.round(recent30DaysHours * 100) / 100,
+      };
+
+      console.log(
+        `User ${userId} (${req.user.email}) accessed dashboard analytics`,
+      );
+
+      res.json(dashboard);
+    } catch (error) {
+      console.error('Get user dashboard analytics error:', error);
+      res
+        .status(500)
+        .json({ message: 'Failed to retrieve dashboard analytics' });
+    }
+  },
+
+  // Get analytics summary
+  async getUserAnalyticsSummary(req, res) {
+    try {
+      const userId = req.user.userId;
+
+      const { data: sessions, error } = await supabase
+        .from('user_topic_study_sessions')
+        .select('duration_seconds, topic_id')
+        .eq('user_id', userId)
+        .not('duration_seconds', 'is', null);
+
+      if (error) {
+        console.error('Error fetching analytics summary:', error);
+        throw error;
+      }
+
+      const totalHours = (sessions || []).reduce(
+        (sum, s) => sum + (s.duration_seconds || 0) / 3600,
+        0,
+      );
+      const totalSessions = (sessions || []).length;
+      const averageSessionDuration =
+        totalSessions > 0 ? (totalHours * 60) / totalSessions : 0;
+      const uniqueTopics = new Set((sessions || []).map((s) => s.topic_id))
+        .size;
+
+      const summary = {
+        user_id: userId,
+        total_study_time_hours: Math.round(totalHours * 100) / 100,
+        total_sessions: totalSessions,
+        average_session_duration: Math.round(averageSessionDuration * 10) / 10,
+        unique_topics_count: uniqueTopics,
+        unique_courses_count: 1, // Would need course data
+        longest_streak_minutes:
+          Math.max(
+            ...((sessions || []).map((s) => s.duration_seconds) || [0]),
+          ) / 60,
+        current_streak_days: 0, // Would need to calculate
+        total_questions_answered: 0, // Would need test data
+        overall_accuracy: 0, // Would need test data
+      };
+
+      console.log(
+        `User ${userId} (${req.user.email}) accessed analytics summary`,
+      );
+
+      res.json(summary);
+    } catch (error) {
+      console.error('Get user analytics summary error:', error);
+      res.status(500).json({ message: 'Failed to retrieve analytics summary' });
+    }
+  },
+
+  // ===============================
+  // LEGACY COMPATIBILITY
+  // ===============================
+
+  // Add missing getUserPerformanceAnalytics method for backward compatibility
+  async getUserPerformanceAnalytics(req, res) {
+    try {
+      const userId = req.user.userId;
+
+      // Mock data based on existing patterns - you can enhance this with real data
+      const response = {
+        branchPerformance: [],
+        totalQuestionsAnswered: 0,
+        overallAccuracy: 0,
+        studyTime: 0,
+        studySessions: 0,
+        averageSessionDuration: 0,
+      };
+
+      // Get actual study data from sessions
+      const { data: sessions, error } = await supabase
+        .from('user_topic_study_sessions')
+        .select('duration_seconds')
+        .eq('user_id', userId)
+        .not('duration_seconds', 'is', null);
+
+      if (!error && sessions) {
+        const totalSeconds = sessions.reduce(
+          (sum, s) => sum + (s.duration_seconds || 0),
+          0,
+        );
+        response.studyTime = totalSeconds;
+        response.studySessions = sessions.length;
+        response.averageSessionDuration =
+          sessions.length > 0 ? totalSeconds / sessions.length : 0;
+      }
+
+      console.log(
+        `User ${userId} (${req.user.email}) accessed user performance analytics`,
+      );
+
+      res.json(response);
+    } catch (error) {
+      console.error('Get user performance analytics error:', error);
+      res
+        .status(500)
+        .json({ message: 'Failed to retrieve user performance analytics' });
+    }
+  },
+
+  // Keep existing methods for backward compatibility but fix them
   async getUserComparativeAnalytics(req, res) {
     try {
       const userId = req.user.userId;
@@ -493,7 +670,6 @@ const analyticsController = {
     }
   },
 
-  // Get user recent activity summary (simplified)
   async getUserRecentActivity(req, res) {
     try {
       const userId = req.user.userId;
@@ -507,32 +683,37 @@ const analyticsController = {
         .from('user_topic_study_sessions')
         .select('duration_seconds, session_date')
         .eq('user_id', userId)
-        .eq('status', 'completed')
         .gte('session_date', startDate.toISOString().split('T')[0])
         .not('duration_seconds', 'is', null);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching recent activity:', error);
+        throw error;
+      }
 
-      const totalMinutes =
-        sessions?.reduce((sum, s) => sum + (s.duration_seconds || 0) / 60, 0) ||
-        0;
-      const activeDays = new Set(sessions?.map((s) => s.session_date) || [])
+      const totalMinutes = (sessions || []).reduce(
+        (sum, s) => sum + (s.duration_seconds || 0) / 60,
+        0,
+      );
+      const activeDays = new Set((sessions || []).map((s) => s.session_date))
         .size;
 
       const recentActivity = [
         {
           period_name: `Last ${daysBack} days`,
           total_study_minutes: Math.round(totalMinutes * 10) / 10,
-          total_sessions: sessions?.length || 0,
+          total_sessions: (sessions || []).length,
           unique_topics: 0, // Would need topic data
           unique_courses: 0, // Would need course data
           total_questions: 0, // Would need test data
           accuracy_percentage: 0, // Would need test data
           consistency_days: activeDays,
-          best_day: sessions?.[0]?.session_date || null,
+          best_day: (sessions || [])[0]?.session_date || null,
           best_day_minutes:
             Math.round(
-              (Math.max(...(sessions?.map((s) => s.duration_seconds) || [0])) /
+              (Math.max(
+                ...((sessions || []).map((s) => s.duration_seconds) || [0]),
+              ) /
                 60) *
                 10,
             ) / 10,
@@ -550,139 +731,9 @@ const analyticsController = {
     }
   },
 
-  // ===============================
-  // DASHBOARD ANALYTICS
-  // ===============================
-
-  // Get comprehensive dashboard analytics
-  async getUserDashboardAnalytics(req, res) {
-    try {
-      const userId = req.user.userId;
-
-      // Query basic session data
-      const { data: sessions, error } = await supabase
-        .from('user_topic_study_sessions')
-        .select('duration_seconds, session_date, topic_id')
-        .eq('user_id', userId)
-        .eq('status', 'completed')
-        .not('duration_seconds', 'is', null)
-        .order('session_date', { ascending: false });
-
-      if (error) throw error;
-
-      const totalHours =
-        sessions?.reduce(
-          (sum, s) => sum + (s.duration_seconds || 0) / 3600,
-          0,
-        ) || 0;
-      const totalSessions = sessions?.length || 0;
-      const uniqueTopics = new Set(sessions?.map((s) => s.topic_id) || []).size;
-      const longestSessionMinutes =
-        Math.max(...(sessions?.map((s) => s.duration_seconds) || [0])) / 60;
-      const averageSessionMinutes =
-        totalSessions > 0 ? (totalHours * 60) / totalSessions : 0;
-
-      // Calculate recent study time
-      const last7Days = new Date();
-      last7Days.setDate(last7Days.getDate() - 7);
-      const last30Days = new Date();
-      last30Days.setDate(last30Days.getDate() - 30);
-
-      const recent7DaysHours =
-        sessions
-          ?.filter((s) => new Date(s.session_date) >= last7Days)
-          .reduce((sum, s) => sum + (s.duration_seconds || 0) / 3600, 0) || 0;
-
-      const recent30DaysHours =
-        sessions
-          ?.filter((s) => new Date(s.session_date) >= last30Days)
-          .reduce((sum, s) => sum + (s.duration_seconds || 0) / 3600, 0) || 0;
-
-      const dashboard = {
-        total_study_hours: Math.round(totalHours * 100) / 100,
-        total_sessions: totalSessions,
-        unique_topics_studied: uniqueTopics,
-        unique_courses_studied: 1, // Would need course data
-        longest_session_minutes: Math.round(longestSessionMinutes * 10) / 10,
-        average_session_minutes: Math.round(averageSessionMinutes * 10) / 10,
-        current_streak_days: 0, // Would need to calculate consecutive days
-        longest_streak_days: 0, // Would need to calculate
-        most_studied_course: 'Restoratif Diş Tedavisi', // From your logs
-        most_studied_topic: null,
-        last_study_date: sessions?.[0]?.session_date || null,
-        last_7_days_hours: Math.round(recent7DaysHours * 100) / 100,
-        last_30_days_hours: Math.round(recent30DaysHours * 100) / 100,
-      };
-
-      console.log(
-        `User ${userId} (${req.user.email}) accessed dashboard analytics`,
-      );
-
-      res.json(dashboard);
-    } catch (error) {
-      console.error('Get user dashboard analytics error:', error);
-      res
-        .status(500)
-        .json({ message: 'Failed to retrieve dashboard analytics' });
-    }
-  },
-
-  // Get analytics summary
-  async getUserAnalyticsSummary(req, res) {
-    try {
-      const userId = req.user.userId;
-
-      const { data: sessions, error } = await supabase
-        .from('user_topic_study_sessions')
-        .select('duration_seconds, topic_id')
-        .eq('user_id', userId)
-        .eq('status', 'completed')
-        .not('duration_seconds', 'is', null);
-
-      if (error) throw error;
-
-      const totalHours =
-        sessions?.reduce(
-          (sum, s) => sum + (s.duration_seconds || 0) / 3600,
-          0,
-        ) || 0;
-      const totalSessions = sessions?.length || 0;
-      const averageSessionDuration =
-        totalSessions > 0 ? (totalHours * 60) / totalSessions : 0;
-      const uniqueTopics = new Set(sessions?.map((s) => s.topic_id) || []).size;
-
-      const summary = {
-        user_id: userId,
-        total_study_time_hours: Math.round(totalHours * 100) / 100,
-        total_sessions: totalSessions,
-        average_session_duration: Math.round(averageSessionDuration * 10) / 10,
-        unique_topics_count: uniqueTopics,
-        unique_courses_count: 1, // Would need course data
-        longest_streak_minutes:
-          Math.max(...(sessions?.map((s) => s.duration_seconds) || [0])) / 60,
-        current_streak_days: 0, // Would need to calculate
-        total_questions_answered: 0, // Would need test data
-        overall_accuracy: 0, // Would need test data
-      };
-
-      console.log(
-        `User ${userId} (${req.user.email}) accessed analytics summary`,
-      );
-
-      res.json(summary);
-    } catch (error) {
-      console.error('Get user analytics summary error:', error);
-      res.status(500).json({ message: 'Failed to retrieve analytics summary' });
-    }
-  },
-
-  // ===============================
-  // VIEW-BASED ANALYTICS (Simplified)
-  // ===============================
-
+  // Enhanced view-based analytics methods
   async getLongestStreaksAnalytics(req, res) {
     try {
-      // Use the existing getUserLongestStreaks logic
       await this.getUserLongestStreaks(req, {
         json: (data) => res.json({ streaksAnalytics: data.streaks }),
       });
@@ -694,7 +745,6 @@ const analyticsController = {
 
   async getDailyProgressAnalytics(req, res) {
     try {
-      // Use the existing getUserDailyProgress logic
       await this.getUserDailyProgress(req, {
         json: (data) =>
           res.json({ dailyProgressAnalytics: data.dailyProgress }),
@@ -709,7 +759,6 @@ const analyticsController = {
 
   async getWeeklyProgressAnalytics(req, res) {
     try {
-      // Use the existing getUserWeeklyProgress logic
       await this.getUserWeeklyProgress(req, {
         json: (data) =>
           res.json({ weeklyProgressAnalytics: data.weeklyProgress }),
@@ -724,7 +773,6 @@ const analyticsController = {
 
   async getMostTimeSpentCourseAnalytics(req, res) {
     try {
-      // Use the existing getUserTopCourses logic
       await this.getUserTopCourses(req, {
         json: (data) => res.json({ courseAnalytics: data.topCourses }),
       });
@@ -734,10 +782,7 @@ const analyticsController = {
     }
   },
 
-  // ===============================
-  // COMPREHENSIVE ANALYTICS ENDPOINT
-  // ===============================
-
+  // Comprehensive analytics endpoint
   async getAllUserAnalytics(req, res) {
     try {
       const userId = req.user.userId;
@@ -822,10 +867,6 @@ const analyticsController = {
     }
   },
 
-  // ===============================
-  // LEGACY COMPATIBILITY
-  // ===============================
-
   // Keep existing dashboard method for backward compatibility
   async getUserDashboard(req, res) {
     try {
@@ -841,11 +882,10 @@ const analyticsController = {
         .eq('user_id', userId)
         .gte('start_time', yesterday.toISOString());
 
-      const recentStudyTime =
-        recentSessions?.reduce(
-          (sum, session) => sum + (session.duration_seconds || 0),
-          0,
-        ) || 0;
+      const recentStudyTime = (recentSessions || []).reduce(
+        (sum, session) => sum + (session.duration_seconds || 0),
+        0,
+      );
 
       // Get daily study time for the past week
       const weekAgo = new Date();
@@ -862,7 +902,7 @@ const analyticsController = {
       const dailyStudyTime = [];
       const dailyMap = new Map();
 
-      weekSessions?.forEach((session) => {
+      (weekSessions || []).forEach((session) => {
         const date = session.session_date;
         const current = dailyMap.get(date) || 0;
         dailyMap.set(date, current + (session.duration_seconds || 0));
