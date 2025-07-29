@@ -78,24 +78,17 @@ const botController = {
   // Challenge a bot
   async challengeBot(req, res) {
     try {
+      const userId = req.user.userId;
       const { testId, difficulty = 1 } = req.body;
-      const userId = req.user.user_id || req.user.id;
 
       if (!testId) {
         return res.status(400).json({
           success: false,
-          message: 'Test ID gerekli',
+          message: 'Test ID is required',
         });
       }
 
-      if (!difficulty || difficulty < 1 || difficulty > 5) {
-        return res.status(400).json({
-          success: false,
-          message: 'Geçersiz zorluk seviyesi (1-5 arası olmalı)',
-        });
-      }
-
-      const botDuel = await botService.createBotDuel(
+      const botDuel = await botService.createBotDuelLegacy(
         userId,
         testId,
         difficulty,
@@ -104,23 +97,106 @@ const botController = {
       res.status(201).json({
         success: true,
         duel: botDuel,
-        message: 'Bot düellosu başarıyla oluşturuldu',
+        message: 'Bot challenge created successfully',
       });
     } catch (error) {
-      console.error('Error creating bot duel:', error);
+      console.error('Bot challenge error:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Failed to create bot challenge',
+      });
+    }
+  },
 
-      if (error.message.includes('No bot available')) {
-        return res.status(404).json({
+  // NEW: Course-based bot challenge endpoint
+  async challengeBotWithCourse(req, res) {
+    try {
+      const userId = req.user.userId;
+      const { courseId, difficulty = 1 } = req.body;
+
+      if (!courseId) {
+        return res.status(400).json({
           success: false,
-          message: error.message,
+          message: 'Course ID is required',
         });
       }
 
+      console.log(
+        `Creating course-based bot challenge: courseId=${courseId}, difficulty=${difficulty}, userId=${userId}`,
+      );
+
+      const botDuel = await botService.createBotDuelWithCourse(
+        userId,
+        courseId,
+        difficulty,
+      );
+
+      res.status(201).json({
+        success: true,
+        duel: botDuel,
+        message: 'Course-based bot challenge created successfully',
+      });
+    } catch (error) {
+      console.error('Course-based bot challenge error:', error);
       res.status(500).json({
         success: false,
-        message: error.message || 'Bot düellosu oluşturulamadı',
-        error:
-          process.env.NODE_ENV === 'development' ? error.message : undefined,
+        message: error.message || 'Failed to create course-based bot challenge',
+      });
+    }
+  },
+
+  // Generic bot challenge endpoint that handles both
+  async challengeBotGeneric(req, res) {
+    try {
+      const userId = req.user.userId;
+      const { testId, courseId, difficulty = 1 } = req.body;
+
+      if (!testId && !courseId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Either testId or courseId is required',
+        });
+      }
+
+      if (testId && courseId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot provide both testId and courseId',
+        });
+      }
+
+      let botDuel;
+
+      if (courseId) {
+        console.log(
+          `Creating course-based bot challenge: courseId=${courseId}, difficulty=${difficulty}`,
+        );
+        botDuel = await botService.createBotDuelWithCourse(
+          userId,
+          courseId,
+          difficulty,
+        );
+      } else {
+        console.log(
+          `Creating test-based bot challenge: testId=${testId}, difficulty=${difficulty}`,
+        );
+        botDuel = await botService.createBotDuelLegacy(
+          userId,
+          testId,
+          difficulty,
+        );
+      }
+
+      res.status(201).json({
+        success: true,
+        duel: botDuel,
+        message: 'Bot challenge created successfully',
+      });
+    } catch (error) {
+      console.error('Generic bot challenge error:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Failed to create bot challenge',
       });
     }
   },

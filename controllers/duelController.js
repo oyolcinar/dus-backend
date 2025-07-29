@@ -11,17 +11,23 @@ const duelController = {
       const initiatorId = req.user.userId;
       let {
         opponentId,
-        testId,
+        testId, // Now optional
+        courseId, // NEW: Course ID for new system
         questionCount,
         branchType,
         selectionType,
         branchId,
       } = req.body;
 
-      if (!opponentId || !testId) {
+      if (!opponentId) {
+        return res.status(400).json({ message: 'Opponent ID is required' });
+      }
+
+      // NEW: Either testId OR courseId must be provided
+      if (!testId && !courseId) {
         return res
           .status(400)
-          .json({ message: 'Opponent ID and test ID are required' });
+          .json({ message: 'Either test ID or course ID is required' });
       }
 
       opponentId = Number(opponentId);
@@ -41,11 +47,23 @@ const duelController = {
         return res.status(404).json({ message: 'Opponent not found' });
       }
 
-      const test = await testModel.getById(testId);
-      if (!test) {
-        return res.status(404).json({ message: 'Test not found' });
+      // Validate test if provided (backward compatibility)
+      if (testId) {
+        const test = await testModel.getById(testId);
+        if (!test) {
+          return res.status(404).json({ message: 'Test not found' });
+        }
       }
 
+      // NEW: Validate course if provided
+      if (courseId) {
+        const course = await courseModel.getById(courseId);
+        if (!course) {
+          return res.status(404).json({ message: 'Course not found' });
+        }
+      }
+
+      // Validate branch/topic if provided
       if (branchId) {
         const branch = await topicModel.getById(branchId);
         if (!branch) {
@@ -53,14 +71,16 @@ const duelController = {
         }
       }
 
+      // NEW: Create duel with course support
       const newDuel = await duelModel.create(
         initiatorId,
         opponentId,
-        testId,
-        questionCount || 3,
+        testId || null,
+        questionCount || 5, // Default to 5 questions
         branchType || 'mixed',
         selectionType || 'random',
         branchId || null,
+        courseId || null, // NEW: Pass courseId
       );
 
       res.status(201).json({

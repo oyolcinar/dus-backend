@@ -296,5 +296,16 @@ router.get('/check/:userId', authSupabase, botController.checkIsBot);
  *         description: Server error
  */
 router.get('/info/:userId', authSupabase, botController.getBotInfo);
+router.post('/challenge', authSupabase, botController.challengeBot); // Legacy test-based
+router.post(
+  '/challenge-course',
+  authSupabase,
+  botController.challengeBotWithCourse,
+); // NEW: Course-based
+router.post(
+  '/challenge-generic',
+  authSupabase,
+  botController.challengeBotGeneric,
+);
 
 module.exports = router;

@@ -87,7 +87,7 @@ const botService = {
   },
 
   // Create a duel with a bot
-  async createBotDuel(userId, testId, difficulty = 1) {
+  async createBotDuel(userId, testId = null, difficulty = 1, courseId = null) {
     try {
       // Get the bot for this difficulty
       const bot = await this.getBotByDifficulty(difficulty);
@@ -95,15 +95,16 @@ const botService = {
         throw new Error(`No bot available for difficulty level ${difficulty}`);
       }
 
-      // Create duel using existing duel model
+      // NEW: Create duel using either testId or courseId
       const newDuel = await duelModel.create(
         userId,
         bot.userId,
-        testId,
-        3, // Default 3 questions
+        testId, // Can be null for course-based duels
+        5, // Updated from 3 to 5 questions
         'mixed',
         'random',
         null,
+        courseId, // NEW: Pass courseId for course-based duels
       );
 
       // Auto-accept the duel since it's a bot
@@ -122,6 +123,26 @@ const botService = {
       };
     } catch (error) {
       console.error('Error creating bot duel:', error);
+      throw error;
+    }
+  },
+
+  // NEW: Course-based bot duel method
+  async createBotDuelWithCourse(userId, courseId, difficulty = 1) {
+    try {
+      return await this.createBotDuel(userId, null, difficulty, courseId);
+    } catch (error) {
+      console.error('Error creating course-based bot duel:', error);
+      throw error;
+    }
+  },
+
+  // Keep the original method for backward compatibility
+  async createBotDuelLegacy(userId, testId, difficulty = 1) {
+    try {
+      return await this.createBotDuel(userId, testId, difficulty, null);
+    } catch (error) {
+      console.error('Error creating legacy bot duel:', error);
       throw error;
     }
   },

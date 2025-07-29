@@ -13,27 +13,40 @@ const duelModel = {
   async create(
     initiatorId,
     opponentId,
-    testId,
-    questionCount = 3,
+    testId = null, // Made optional for backward compatibility
+    questionCount = 5, // Increased default to 5
     branchType = 'mixed',
     selectionType = 'random',
     branchId = null,
+    courseId = null, // NEW: Add courseId parameter
   ) {
     try {
+      // If courseId is provided but testId is not, we'll use course-based question selection
+      const insertData = {
+        initiator_id: initiatorId,
+        opponent_id: opponentId,
+        status: 'pending',
+        question_count: questionCount,
+        branch_type: branchType,
+        selection_type: selectionType,
+        branch_id: branchId,
+      };
+
+      // Add test_id if provided (backward compatibility)
+      if (testId) {
+        insertData.test_id = testId;
+      }
+
+      // Add course_id if provided (new system)
+      if (courseId) {
+        insertData.course_id = courseId;
+      }
+
       const { data, error } = await supabase
         .from('duels')
-        .insert({
-          initiator_id: initiatorId,
-          opponent_id: opponentId,
-          test_id: testId,
-          status: 'pending',
-          question_count: questionCount,
-          branch_type: branchType,
-          selection_type: selectionType,
-          branch_id: branchId,
-        })
+        .insert(insertData)
         .select(
-          'duel_id, initiator_id, opponent_id, test_id, status, start_time, end_time, created_at, question_count, branch_type, selection_type, branch_id',
+          'duel_id, initiator_id, opponent_id, test_id, course_id, status, start_time, end_time, created_at, question_count, branch_type, selection_type, branch_id',
         )
         .single();
 
@@ -412,14 +425,15 @@ const duelModel = {
   async createWithNotification(
     initiatorId,
     opponentId,
-    testId,
-    questionCount = 3,
+    testId = null,
+    questionCount = 5, // Increased default to 5
     branchType = 'mixed',
     selectionType = 'random',
     branchId = null,
+    courseId = null, // NEW: Add courseId parameter
   ) {
     try {
-      // Use existing create function
+      // Use existing create function with new parameters
       const duel = await this.create(
         initiatorId,
         opponentId,
@@ -428,6 +442,7 @@ const duelModel = {
         branchType,
         selectionType,
         branchId,
+        courseId,
       );
 
       // Get user and topic details for notification
@@ -437,11 +452,29 @@ const duelModel = {
         .eq('user_id', initiatorId)
         .single();
 
-      const { data: topic } = await supabase
-        .from('topics')
-        .select('title')
-        .eq('topic_id', branchId)
-        .single();
+      let topicTitle = 'Mixed Topics';
+
+      // Try to get course name if courseId is provided
+      if (courseId) {
+        const { data: course } = await supabase
+          .from('courses')
+          .select('title')
+          .eq('course_id', courseId)
+          .single();
+        if (course) {
+          topicTitle = course.title;
+        }
+      } else if (branchId) {
+        // Fallback to topic if branchId is provided
+        const { data: topic } = await supabase
+          .from('topics')
+          .select('title')
+          .eq('topic_id', branchId)
+          .single();
+        if (topic) {
+          topicTitle = topic.title;
+        }
+      }
 
       // Send duel invitation notification
       await notificationService.sendNotification(
@@ -451,7 +484,7 @@ const duelModel = {
         {
           challenger_name: initiator?.username || 'Unknown',
           challenger_id: initiatorId,
-          topic_name: topic?.title || 'Mixed Topics',
+          topic_name: topicTitle,
           duel_id: duel.duel_id,
         },
       );

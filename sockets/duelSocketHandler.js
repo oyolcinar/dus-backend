@@ -204,13 +204,42 @@ const setupDuelSockets = (io) => {
 
     socket.on('challenge_bot', async (data) => {
       try {
-        const { testId, difficulty = 1 } = data;
-        const botDuel = await botService.createBotDuel(
-          socket.userId,
-          testId,
-          difficulty,
-        );
+        const { testId, courseId, difficulty = 1 } = data;
+
+        // NEW: Support both testId and courseId
+        if (!testId && !courseId) {
+          return socket.emit('bot_challenge_error', {
+            message: 'Either testId or courseId is required for bot challenge',
+          });
+        }
+
+        let botDuel;
+
+        if (courseId) {
+          // NEW: Course-based bot challenge
+          console.log(
+            `🤖 Creating course-based bot challenge: courseId=${courseId}, difficulty=${difficulty}`,
+          );
+          botDuel = await botService.createBotDuelWithCourse(
+            socket.userId,
+            courseId,
+            difficulty,
+          );
+        } else {
+          // Legacy: Test-based bot challenge
+          console.log(
+            `🤖 Creating test-based bot challenge: testId=${testId}, difficulty=${difficulty}`,
+          );
+          botDuel = await botService.createBotDuelLegacy(
+            socket.userId,
+            testId,
+            difficulty,
+          );
+        }
+
         socket.emit('bot_challenge_created', { duel: botDuel });
+
+        // Auto-join the duel after a short delay
         setTimeout(
           () => socket.emit('auto_join_duel', { duelId: botDuel.duel_id }),
           500,
@@ -218,7 +247,43 @@ const setupDuelSockets = (io) => {
       } catch (error) {
         console.error('Error challenging bot:', error);
         socket.emit('bot_challenge_error', {
-          message: 'Failed to create bot challenge',
+          message: error.message || 'Failed to create bot challenge',
+        });
+      }
+    });
+
+    // ADD: New event handler for course-specific bot challenges
+    socket.on('challenge_bot_course', async (data) => {
+      try {
+        const { courseId, difficulty = 1 } = data;
+
+        if (!courseId) {
+          return socket.emit('bot_challenge_error', {
+            message: 'Course ID is required for course-based bot challenge',
+          });
+        }
+
+        console.log(
+          `🤖 Course-based bot challenge: courseId=${courseId}, difficulty=${difficulty}`,
+        );
+
+        const botDuel = await botService.createBotDuelWithCourse(
+          socket.userId,
+          courseId,
+          difficulty,
+        );
+
+        socket.emit('bot_challenge_created', { duel: botDuel });
+
+        setTimeout(
+          () => socket.emit('auto_join_duel', { duelId: botDuel.duel_id }),
+          500,
+        );
+      } catch (error) {
+        console.error('Error challenging bot with course:', error);
+        socket.emit('bot_challenge_error', {
+          message:
+            error.message || 'Failed to create course-based bot challenge',
         });
       }
     });
