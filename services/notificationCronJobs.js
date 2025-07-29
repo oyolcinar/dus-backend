@@ -25,6 +25,9 @@ class NotificationCronJobs {
     // Streak reminders - Every 3 days at 7 PM
     this.scheduleStreakReminders();
 
+    // NEW: Achievement checking - Every 6 hours
+    this.scheduleAchievementChecking();
+
     // Process pending notifications - Every 5 minutes
     this.schedulePendingNotificationProcessor();
 
@@ -176,6 +179,34 @@ class NotificationCronJobs {
     });
   }
 
+  // NEW: Schedule achievement checking
+  scheduleAchievementChecking() {
+    const job = cron.schedule(
+      '0 */6 * * *', // Every 6 hours
+      async () => {
+        console.log('Running achievement checking job...');
+        try {
+          const result = await NotificationHelpers.checkAllUsersAchievements();
+          console.log(
+            `Achievement check completed: ${result.summary.totalNewAchievements} new achievements awarded to ${result.summary.successfulChecks} users`,
+          );
+        } catch (error) {
+          console.error('Error in achievement checking cron job:', error);
+        }
+      },
+      {
+        scheduled: true,
+        timezone: 'Europe/Istanbul',
+      },
+    );
+
+    this.jobs.push({
+      name: 'achievement_checking',
+      schedule: '0 */6 * * *',
+      job,
+    });
+  }
+
   // Schedule pending notification processor
   schedulePendingNotificationProcessor() {
     const job = cron.schedule(
@@ -223,6 +254,38 @@ class NotificationCronJobs {
     this.jobs.push({
       name: 'notification_cleanup',
       schedule: '0 2 * * 0',
+      job,
+    });
+  }
+
+  // NEW: Schedule intensive achievement check (weekly)
+  scheduleWeeklyAchievementCheck() {
+    const job = cron.schedule(
+      '0 3 * * 0', // Every Sunday at 3 AM
+      async () => {
+        console.log('Running intensive weekly achievement check...');
+        try {
+          // Check all users with higher limit for comprehensive check
+          const achievementService = require('./achievementService');
+          const result = await achievementService.checkAllUsersAchievements(
+            500,
+          );
+          console.log(
+            `Weekly achievement check completed: ${result.summary.totalNewAchievements} new achievements awarded`,
+          );
+        } catch (error) {
+          console.error('Error in weekly achievement check cron job:', error);
+        }
+      },
+      {
+        scheduled: true,
+        timezone: 'Europe/Istanbul',
+      },
+    );
+
+    this.jobs.push({
+      name: 'weekly_achievement_check',
+      schedule: '0 3 * * 0',
       job,
     });
   }
@@ -322,6 +385,37 @@ class NotificationCronJobs {
       }
     }
     return false;
+  }
+
+  // NEW: Manual achievement check trigger
+  async triggerAchievementCheck(userIds = null) {
+    try {
+      console.log('Manually triggering achievement check...');
+
+      const achievementService = require('./achievementService');
+
+      if (userIds && Array.isArray(userIds)) {
+        // Check specific users
+        const results = await achievementService.checkMultipleUsersAchievements(
+          userIds,
+        );
+        console.log(
+          `Manual achievement check completed for ${userIds.length} users`,
+        );
+        return results;
+      } else {
+        // Check all users
+        const results = await achievementService.checkAllUsersAchievements();
+        console.log(
+          `Manual achievement check completed for all users:`,
+          results.summary,
+        );
+        return results;
+      }
+    } catch (error) {
+      console.error('Error in manual achievement check:', error);
+      throw error;
+    }
   }
 
   // Schedule one-time notification
@@ -454,6 +548,8 @@ class NotificationCronJobs {
       one_time_jobs: this.jobs.filter((j) => j.oneTime).length,
       bulk_jobs: this.jobs.filter((j) => j.bulk).length,
       recurring_jobs: this.jobs.filter((j) => !j.oneTime && !j.bulk).length,
+      achievement_jobs: this.jobs.filter((j) => j.name.includes('achievement'))
+        .length,
     };
   }
 }

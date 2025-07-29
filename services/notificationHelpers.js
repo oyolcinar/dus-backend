@@ -1,4 +1,5 @@
 const notificationService = require('./notificationService');
+const achievementService = require('./achievementService'); // Add this import
 
 /**
  * Notification Helper Functions
@@ -54,7 +55,7 @@ class NotificationHelpers {
     }
   }
 
-  // Duel result notification (winner)
+  // Duel result notification (winner) - ENHANCED with achievement check
   static async sendDuelWinnerNotification(
     winnerId,
     opponentName,
@@ -63,7 +64,7 @@ class NotificationHelpers {
     duelId,
   ) {
     try {
-      return await notificationService.sendNotification(
+      const notification = await notificationService.sendNotification(
         winnerId,
         'duel_result',
         'duel_result_winner',
@@ -74,13 +75,29 @@ class NotificationHelpers {
           duel_id: duelId,
         },
       );
+
+      // Trigger achievement check after duel completion
+      try {
+        await achievementService.triggerAchievementCheck(
+          winnerId,
+          'duel_completed',
+        );
+      } catch (achievementError) {
+        console.error(
+          'Error checking achievements after duel win:',
+          achievementError,
+        );
+        // Don't throw - achievement check failure shouldn't break duel notification
+      }
+
+      return notification;
     } catch (error) {
       console.error('Error sending duel winner notification:', error);
       throw error;
     }
   }
 
-  // Duel result notification (loser)
+  // Duel result notification (loser) - ENHANCED with achievement check
   static async sendDuelLoserNotification(
     loserId,
     opponentName,
@@ -89,7 +106,7 @@ class NotificationHelpers {
     duelId,
   ) {
     try {
-      return await notificationService.sendNotification(
+      const notification = await notificationService.sendNotification(
         loserId,
         'duel_result',
         'duel_result_loser',
@@ -100,6 +117,22 @@ class NotificationHelpers {
           duel_id: duelId,
         },
       );
+
+      // Trigger achievement check after duel completion
+      try {
+        await achievementService.triggerAchievementCheck(
+          loserId,
+          'duel_completed',
+        );
+      } catch (achievementError) {
+        console.error(
+          'Error checking achievements after duel loss:',
+          achievementError,
+        );
+        // Don't throw - achievement check failure shouldn't break duel notification
+      }
+
+      return notification;
     } catch (error) {
       console.error('Error sending duel loser notification:', error);
       throw error;
@@ -291,6 +324,66 @@ class NotificationHelpers {
       );
     } catch (error) {
       console.error('Error sending content update notification:', error);
+      throw error;
+    }
+  }
+
+  // NEW: Study session completed notification with achievement check
+  static async handleStudySessionCompleted(userId, sessionData) {
+    try {
+      console.log(`Handling study session completion for user ${userId}`);
+
+      // Trigger achievement check after study session
+      const newAchievements = await achievementService.triggerAchievementCheck(
+        userId,
+        'study_session_completed',
+      );
+
+      console.log(
+        `Found ${newAchievements.length} new achievements for user ${userId}`,
+      );
+      return newAchievements;
+    } catch (error) {
+      console.error('Error handling study session completion:', error);
+      throw error;
+    }
+  }
+
+  // NEW: User registration completed with achievement check
+  static async handleUserRegistration(userId) {
+    try {
+      console.log(`Handling user registration for user ${userId}`);
+
+      // Initialize default notification preferences
+      await notificationService.initializeDefaultPreferences(userId);
+
+      // Check for registration achievement (should award "Acemi Dusiyer")
+      const newAchievements = await achievementService.triggerAchievementCheck(
+        userId,
+        'user_registered',
+      );
+
+      console.log(
+        `User ${userId} earned ${newAchievements.length} achievements on registration`,
+      );
+      return newAchievements;
+    } catch (error) {
+      console.error('Error handling user registration:', error);
+      throw error;
+    }
+  }
+
+  // NEW: Check achievements for all users (for cron job)
+  static async checkAllUsersAchievements() {
+    try {
+      console.log('Running achievement check for all users...');
+
+      const results = await achievementService.checkAllUsersAchievements();
+
+      console.log(`Achievement check completed:`, results.summary);
+      return results;
+    } catch (error) {
+      console.error('Error checking all users achievements:', error);
       throw error;
     }
   }
