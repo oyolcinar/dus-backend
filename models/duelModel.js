@@ -21,6 +21,17 @@ const duelModel = {
     courseId = null, // NEW: Add courseId parameter
   ) {
     try {
+      console.log('🔧 DuelModel.create called with:', {
+        initiatorId,
+        opponentId,
+        testId,
+        questionCount,
+        branchType,
+        selectionType,
+        branchId,
+        courseId,
+      });
+
       // If courseId is provided but testId is not, we'll use course-based question selection
       const insertData = {
         initiator_id: initiatorId,
@@ -50,10 +61,21 @@ const duelModel = {
         )
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error creating duel:', error);
+        throw error;
+      }
+
+      console.log('✅ Duel created successfully:', {
+        duelId: data.duel_id,
+        courseId: data.course_id,
+        testId: data.test_id,
+        status: data.status,
+      });
+
       return data;
     } catch (error) {
-      console.error('Error creating duel:', error);
+      console.error('💥 Error in duelModel.create:', error);
       throw error;
     }
   },
@@ -65,16 +87,24 @@ const duelModel = {
         .from('duels')
         .select(
           `
-          *,
-          initiator:users!duels_initiator_id_fkey(username),
-          opponent:users!duels_opponent_id_fkey(username),
-          test:tests(title)
-        `,
+        *,
+        initiator:users!duels_initiator_id_fkey(username),
+        opponent:users!duels_opponent_id_fkey(username),
+        test:tests(title),
+        course:courses(title)
+      `,
         )
         .eq('duel_id', duelId)
         .single();
 
       if (error) throw error;
+
+      console.log('🔧 DuelModel.getById raw data:', {
+        duelId: data.duel_id,
+        courseId: data.course_id,
+        testId: data.test_id,
+        courseTitle: data.course?.title,
+      });
 
       // Transform the response to match the original format
       return {
@@ -82,6 +112,7 @@ const duelModel = {
         initiator_id: data.initiator_id,
         opponent_id: data.opponent_id,
         test_id: data.test_id,
+        course_id: data.course_id,
         status: data.status,
         start_time: data.start_time,
         end_time: data.end_time,
@@ -93,6 +124,7 @@ const duelModel = {
         initiator_username: data.initiator?.username,
         opponent_username: data.opponent?.username,
         test_title: data.test?.title,
+        course_title: data.course?.title,
       };
     } catch (error) {
       console.error('Error getting duel by ID:', error);
@@ -110,7 +142,8 @@ const duelModel = {
           *,
           initiator:users!duels_initiator_id_fkey(username),
           opponent:users!duels_opponent_id_fkey(username),
-          test:tests(title)
+          test:tests(title),
+          course:courses(title)
         `,
         )
         .eq('opponent_id', userId)
@@ -125,6 +158,7 @@ const duelModel = {
         initiator_id: duel.initiator_id,
         opponent_id: duel.opponent_id,
         test_id: duel.test_id,
+        course_id: duel.course_id,
         status: duel.status,
         created_at: duel.created_at,
         question_count: duel.question_count,
@@ -134,6 +168,7 @@ const duelModel = {
         initiator_username: duel.initiator?.username,
         opponent_username: duel.opponent?.username,
         test_title: duel.test?.title,
+        course_title: duel.course?.title,
       }));
     } catch (error) {
       console.error('Error getting pending duels:', error);
@@ -151,7 +186,8 @@ const duelModel = {
           *,
           initiator:users!duels_initiator_id_fkey(username),
           opponent:users!duels_opponent_id_fkey(username),
-          test:tests(title)
+          test:tests(title),
+          course:courses(title)
         `,
         )
         .or(`initiator_id.eq.${userId},opponent_id.eq.${userId}`)
@@ -166,6 +202,7 @@ const duelModel = {
         initiator_id: duel.initiator_id,
         opponent_id: duel.opponent_id,
         test_id: duel.test_id,
+        course_id: duel.course_id,
         status: duel.status,
         start_time: duel.start_time,
         created_at: duel.created_at,
@@ -176,6 +213,7 @@ const duelModel = {
         initiator_username: duel.initiator?.username,
         opponent_username: duel.opponent?.username,
         test_title: duel.test?.title,
+        course_title: duel.course?.title,
       }));
     } catch (error) {
       console.error('Error getting active duels:', error);
@@ -194,6 +232,7 @@ const duelModel = {
           initiator:users!duels_initiator_id_fkey(username),
           opponent:users!duels_opponent_id_fkey(username),
           test:tests(title),
+          course:courses(title),
           duel_results(winner_id, initiator_score, opponent_score)
         `,
         )
@@ -213,6 +252,7 @@ const duelModel = {
           initiator_id: duel.initiator_id,
           opponent_id: duel.opponent_id,
           test_id: duel.test_id,
+          course_id: duel.course_id,
           status: duel.status,
           start_time: duel.start_time,
           end_time: duel.end_time,
@@ -224,6 +264,7 @@ const duelModel = {
           initiator_username: duel.initiator?.username,
           opponent_username: duel.opponent?.username,
           test_title: duel.test?.title,
+          course_title: duel.course?.title,
           winner_id: duelResult.winner_id,
           initiator_score: duelResult.initiator_score,
           opponent_score: duelResult.opponent_score,
@@ -239,6 +280,8 @@ const duelModel = {
   // Accept a duel challenge
   async accept(duelId) {
     try {
+      console.log('🔧 DuelModel.accept called for duel:', duelId);
+
       const { data, error } = await supabase
         .from('duels')
         .update({
@@ -250,10 +293,21 @@ const duelModel = {
         .select('*')
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error accepting duel:', error);
+        throw error;
+      }
+
+      console.log('✅ Duel accepted successfully:', {
+        duelId: data.duel_id,
+        courseId: data.course_id,
+        testId: data.test_id,
+        status: data.status,
+      });
+
       return data;
     } catch (error) {
-      console.error('Error accepting duel:', error);
+      console.error('💥 Error in duelModel.accept:', error);
       throw error;
     }
   },
@@ -309,7 +363,8 @@ const duelModel = {
           *,
           initiator:users!duels_initiator_id_fkey(username),
           opponent:users!duels_opponent_id_fkey(username),
-          test:tests(title)
+          test:tests(title),
+          course:courses(title)
         `,
         )
         .eq('branch_id', branchId)
@@ -322,6 +377,7 @@ const duelModel = {
         initiator_id: duel.initiator_id,
         opponent_id: duel.opponent_id,
         test_id: duel.test_id,
+        course_id: duel.course_id,
         status: duel.status,
         start_time: duel.start_time,
         end_time: duel.end_time,
@@ -333,6 +389,7 @@ const duelModel = {
         initiator_username: duel.initiator?.username,
         opponent_username: duel.opponent?.username,
         test_title: duel.test?.title,
+        course_title: duel.course?.title,
       }));
     } catch (error) {
       console.error('Error getting duels by branch ID:', error);
@@ -422,6 +479,7 @@ const duelModel = {
       throw error;
     }
   },
+
   async createWithNotification(
     initiatorId,
     opponentId,
