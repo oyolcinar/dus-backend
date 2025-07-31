@@ -312,39 +312,113 @@ const setupDuelSockets = (io) => {
 
 async function startDuelSession(duelId, roomName, io) {
   try {
+    console.log(`🎮 Starting duel session ${duelId}...`);
+
     const session = activeSessions.get(duelId);
-    if (!session) return;
+    if (!session) {
+      console.error(`❌ Session not found for duel ${duelId}`);
+      io.to(roomName).emit('room_error', {
+        message: 'Duel session not found',
+        code: 'SESSION_NOT_FOUND',
+      });
+      return;
+    }
+
     session.status = 'active';
     session.startedAt = new Date();
     session.currentQuestionIndex = 0;
-    session.questions = await duelSessionService.getQuestionsForDuel(
-      session.duelId,
-    );
-    session.processingLock = false; // Add a simple lock to the session itself
+    session.processingLock = false;
+
+    // ENHANCED: Try to get questions with detailed error handling
+    try {
+      console.log(`📚 Fetching questions for duel ${duelId}...`);
+      session.questions = await duelSessionService.getQuestionsForDuel(duelId);
+
+      if (!session.questions || session.questions.length === 0) {
+        throw new Error('No questions available for this course');
+      }
+
+      console.log(
+        `✅ Successfully loaded ${session.questions.length} questions for duel ${duelId}`,
+      );
+    } catch (questionError) {
+      console.error(
+        `❌ Failed to get questions for duel ${duelId}:`,
+        questionError,
+      );
+
+      // Send specific error to client
+      io.to(roomName).emit('room_error', {
+        message: `Sorular yüklenemedi: ${questionError.message}`,
+        code: 'QUESTIONS_LOAD_FAILED',
+      });
+      return;
+    }
+
     activeSessions.set(duelId, session);
-    console.log(
-      `🎮 Starting duel session ${duelId} with ${session.questions.length} questions`,
-    );
+
     const duel = await duelSessionService.getDuelById(duelId);
     const isOpponentBot = await botService.isBot(duel.opponent_id);
+
+    console.log(`🚀 Presenting first question for duel ${duelId}`);
     await presentNextQuestion(duelId, roomName, io, { isOpponentBot, duel });
   } catch (error) {
-    console.error('Error starting duel session:', error);
+    console.error(`💥 Critical error starting duel session ${duelId}:`, error);
+    io.to(roomName).emit('room_error', {
+      message: 'Düello başlatılırken kritik hata oluştu',
+      code: 'CRITICAL_START_ERROR',
+    });
   }
 }
 
+// Replace your presentNextQuestion function with this enhanced version:
 async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
   try {
     const session = activeSessions.get(duelId);
-    if (!session) return;
+    if (!session) {
+      console.error(
+        `❌ Session not found when presenting question for duel ${duelId}`,
+      );
+      io.to(roomName).emit('room_error', {
+        message: 'Duel session lost',
+        code: 'SESSION_LOST',
+      });
+      return;
+    }
 
+    // Check if duel should be completed
     if (session.currentQuestionIndex >= session.questions.length) {
+      console.log(`🏁 All questions completed for duel ${duelId}`);
       return await completeDuel(duelId, roomName, io);
     }
 
     const currentQuestion = session.questions[session.currentQuestionIndex];
     if (!currentQuestion) {
+      console.error(
+        `❌ Question not found at index ${session.currentQuestionIndex} for duel ${duelId}`,
+      );
+      io.to(roomName).emit('room_error', {
+        message: 'Soru bulunamadı',
+        code: 'QUESTION_NOT_FOUND',
+      });
       return await completeDuel(duelId, roomName, io);
+    }
+
+    // Validate question structure
+    if (
+      !currentQuestion.question_id ||
+      !currentQuestion.question_text ||
+      !currentQuestion.options
+    ) {
+      console.error(
+        `❌ Invalid question structure for duel ${duelId}:`,
+        currentQuestion,
+      );
+      io.to(roomName).emit('room_error', {
+        message: 'Geçersiz soru yapısı',
+        code: 'INVALID_QUESTION',
+      });
+      return;
     }
 
     // Release the lock for the new question
@@ -356,7 +430,13 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
         session.questions.length
       } for duel ${duelId}`,
     );
+    console.log(`📝 Question details:`, {
+      id: currentQuestion.question_id,
+      text: currentQuestion.question_text.substring(0, 50) + '...',
+      optionCount: Object.keys(currentQuestion.options || {}).length,
+    });
 
+    // SEND THE QUESTION
     io.to(roomName).emit('question_presented', {
       questionIndex: session.currentQuestionIndex,
       totalQuestions: session.questions.length,
@@ -368,6 +448,13 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
       timeLimit: 30000,
     });
 
+    console.log(
+      `✅ Question ${
+        session.currentQuestionIndex + 1
+      } sent to room ${roomName}`,
+    );
+
+    // Handle bot answer if needed
     if (botInfo.isOpponentBot) {
       handleBotAnswer(
         duelId,
@@ -378,9 +465,9 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
       );
     }
 
+    // Set timeout for auto-submit
     setTimeout(async () => {
       const currentSession = activeSessions.get(duelId);
-      // Check if this timeout is for the current question and it's not already being processed
       if (
         currentSession &&
         currentSession.currentQuestionIndex === session.currentQuestionIndex &&
@@ -395,12 +482,15 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
           session.sessionId,
           session.currentQuestionIndex,
         );
-        // After auto-submitting, we just need to check if the round is complete
         await checkAndProcessRoundResult(duelId, currentSession, io);
       }
     }, 30000);
   } catch (error) {
-    console.error('Error presenting question:', error);
+    console.error(`💥 Error presenting question for duel ${duelId}:`, error);
+    io.to(roomName).emit('room_error', {
+      message: 'Soru sunulurken hata oluştu',
+      code: 'QUESTION_PRESENT_ERROR',
+    });
   }
 }
 

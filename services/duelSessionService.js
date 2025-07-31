@@ -44,32 +44,56 @@ const duelSessionService = {
 
   async getQuestionsForDuel(duelId) {
     try {
-      const duel = await this.getDuelById(duelId);
-      if (!duel) throw new Error('Duel not found');
+      console.log(`📚 Getting questions for duel ${duelId}...`);
 
-      // NEW: Get course_id from duel or from test if test_id exists
+      const duel = await this.getDuelById(duelId);
+      if (!duel) {
+        throw new Error(`Duel ${duelId} not found`);
+      }
+
+      console.log(`📚 Duel details:`, {
+        duelId: duel.duel_id,
+        courseId: duel.course_id,
+        testId: duel.test_id,
+        questionCount: duel.question_count,
+      });
+
+      // Get course_id from duel or from test if test_id exists
       let courseId = null;
 
       if (duel.course_id) {
         // Direct course reference (new system)
         courseId = duel.course_id;
+        console.log(`📚 Using direct course_id: ${courseId}`);
       } else if (duel.test_id) {
         // Legacy: get course_id from test (backward compatibility)
+        console.log(`📚 Getting course_id from test_id: ${duel.test_id}`);
         const { data: test, error: testError } = await supabase
           .from('tests')
           .select('course_id')
           .eq('test_id', duel.test_id)
           .single();
 
-        if (testError) throw testError;
+        if (testError) {
+          console.error(
+            `❌ Error getting test for test_id ${duel.test_id}:`,
+            testError,
+          );
+          throw testError;
+        }
         courseId = test.course_id;
+        console.log(`📚 Found course_id from test: ${courseId}`);
       }
 
       if (!courseId) {
-        throw new Error('No course found for this duel');
+        throw new Error(
+          `No course found for duel ${duelId} (course_id: ${duel.course_id}, test_id: ${duel.test_id})`,
+        );
       }
 
-      // NEW: Get all questions from all tests in this course
+      console.log(`📚 Fetching questions for course_id: ${courseId}`);
+
+      // Get all questions from all tests in this course
       const { data: questions, error } = await supabase
         .from('test_questions')
         .select(
@@ -85,21 +109,64 @@ const duelSessionService = {
         )
         .eq('tests.course_id', courseId);
 
-      if (error) throw error;
+      if (error) {
+        console.error(
+          `❌ Database error fetching questions for course ${courseId}:`,
+          error,
+        );
+        throw error;
+      }
+
       if (!questions || questions.length === 0) {
-        throw new Error(`No questions found for course_id: ${courseId}`);
+        console.error(`❌ No questions found for course_id: ${courseId}`);
+
+        // DEBUG: Check if course exists
+        const { data: course, error: courseError } = await supabase
+          .from('courses')
+          .select('*')
+          .eq('course_id', courseId)
+          .single();
+
+        if (courseError) {
+          console.error(`❌ Course ${courseId} does not exist:`, courseError);
+          throw new Error(`Course ${courseId} not found in database`);
+        }
+
+        // DEBUG: Check if tests exist for this course
+        const { data: tests, error: testsError } = await supabase
+          .from('tests')
+          .select('test_id, title')
+          .eq('course_id', courseId);
+
+        if (testsError) {
+          console.error(
+            `❌ Error checking tests for course ${courseId}:`,
+            testsError,
+          );
+        } else {
+          console.log(
+            `📚 Found ${tests?.length || 0} tests for course ${courseId}:`,
+            tests,
+          );
+        }
+
+        throw new Error(
+          `No questions found for course "${course.title}" (ID: ${courseId}). Course exists but has no test questions.`,
+        );
       }
 
       console.log(
-        `Found ${questions.length} questions for course_id: ${courseId}`,
+        `✅ Found ${questions.length} questions for course_id: ${courseId}`,
       );
 
-      // Shuffle and select 5 questions (increased from 3)
+      // Shuffle and select questions
       const shuffledQuestions = questions.sort(() => Math.random() - 0.5);
-      const questionCount = duel.question_count || 5; // Default to 5 questions
+      const questionCount = duel.question_count || 5;
       const limitedQuestions = shuffledQuestions.slice(0, questionCount);
 
-      console.log(`Selected ${limitedQuestions.length} questions for duel`);
+      console.log(
+        `✅ Selected ${limitedQuestions.length} questions for duel ${duelId}`,
+      );
 
       // Update duel session with selected questions
       await supabase
@@ -109,7 +176,10 @@ const duelSessionService = {
 
       return limitedQuestions;
     } catch (error) {
-      console.error('Error getting questions for duel:', error);
+      console.error(
+        `💥 Critical error getting questions for duel ${duelId}:`,
+        error,
+      );
       throw error;
     }
   },
