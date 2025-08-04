@@ -514,6 +514,8 @@ const authController = {
   },
 
   // ENHANCED OAuth callback with iOS support and database trigger integration
+  // Update your authController.js oauthCallback function:
+
   async oauthCallback(req, res) {
     console.log('🔄 OAuth callback started');
     console.log('User Agent:', req.headers['user-agent']);
@@ -522,32 +524,37 @@ const authController = {
       const { code, error, error_description } = req.query;
       const userAgent = req.headers['user-agent'] || '';
       const isIOS = /iPad|iPhone|iPod/.test(userAgent);
-      const isSafari = /Safari/.test(userAgent) && !/Chrome/.test(userAgent);
 
       if (error) {
         console.error('❌ OAuth error:', { error, error_description });
-        const redirectUrl = `${authController.getFrontendUrl(
-          req,
-        )}#error=${encodeURIComponent(error_description || error)}`;
 
-        // For iOS Safari, add a fallback page
-        if (isIOS && isSafari) {
+        // iOS-SPECIFIC redirect format fix
+        const redirectUrl = isIOS
+          ? `com.dortac.dusfrontend://oauth/callback?error=${encodeURIComponent(
+              error_description || error,
+            )}`
+          : `${authController.getFrontendUrl(req)}#error=${encodeURIComponent(
+              error_description || error,
+            )}`;
+
+        if (isIOS) {
           return authController.handleIOSRedirect(res, redirectUrl, true);
         }
-
         return res.redirect(redirectUrl);
       }
 
       if (!code) {
         console.error('❌ No authorization code received');
-        const redirectUrl = `${authController.getFrontendUrl(
-          req,
-        )}#error=authorization_required`;
 
-        if (isIOS && isSafari) {
+        const redirectUrl = isIOS
+          ? `com.dortac.dusfrontend://oauth/callback?error=authorization_required`
+          : `${authController.getFrontendUrl(
+              req,
+            )}#error=authorization_required`;
+
+        if (isIOS) {
           return authController.handleIOSRedirect(res, redirectUrl, true);
         }
-
         return res.redirect(redirectUrl);
       }
 
@@ -559,50 +566,52 @@ const authController = {
 
       if (authError) {
         console.error('❌ Failed to exchange code for session:', authError);
-        const redirectUrl = `${authController.getFrontendUrl(
-          req,
-        )}#error=${encodeURIComponent(authError.message)}`;
 
-        if (isIOS && isSafari) {
+        const redirectUrl = isIOS
+          ? `com.dortac.dusfrontend://oauth/callback?error=${encodeURIComponent(
+              authError.message,
+            )}`
+          : `${authController.getFrontendUrl(req)}#error=${encodeURIComponent(
+              authError.message,
+            )}`;
+
+        if (isIOS) {
           return authController.handleIOSRedirect(res, redirectUrl, true);
         }
-
         return res.redirect(redirectUrl);
       }
 
       const { user: authUser, session } = data;
       console.log('✅ Session exchange successful for user:', authUser.email);
 
-      // The database trigger has already created the user in public.users
-      // We just need to fetch it (with a small delay to ensure trigger completed)
+      // Get user from database (existing code...)
       let user = null;
       let attempts = 0;
       const maxAttempts = 5;
 
       while (!user && attempts < maxAttempts) {
         user = await userModel.findByAuthId(authUser.id);
-
         if (!user) {
           console.log(
             `⏳ User not found yet, attempt ${
               attempts + 1
             }/${maxAttempts}, waiting...`,
           );
-          await new Promise((resolve) => setTimeout(resolve, 500)); // Wait 500ms
+          await new Promise((resolve) => setTimeout(resolve, 500));
           attempts++;
         }
       }
 
       if (!user) {
         console.error('❌ User was not created by database trigger');
-        const redirectUrl = `${authController.getFrontendUrl(
-          req,
-        )}#error=user_creation_failed`;
 
-        if (isIOS && isSafari) {
+        const redirectUrl = isIOS
+          ? `com.dortac.dusfrontend://oauth/callback?error=user_creation_failed`
+          : `${authController.getFrontendUrl(req)}#error=user_creation_failed`;
+
+        if (isIOS) {
           return authController.handleIOSRedirect(res, redirectUrl, true);
         }
-
         return res.redirect(redirectUrl);
       }
 
@@ -613,15 +622,18 @@ const authController = {
         provider: user.oauth_provider,
       });
 
-      // Redirect to mobile app with tokens
-      const redirectUrl = `${authController.getFrontendUrl(req)}#access_token=${
-        session.access_token
-      }&refresh_token=${session.refresh_token}&user_id=${user.user_id}`;
+      // 🔥 CRITICAL FIX: iOS-specific redirect URL format
+      const redirectUrl = isIOS
+        ? `com.dortac.dusfrontend://oauth/callback?access_token=${session.access_token}&refresh_token=${session.refresh_token}&user_id=${user.user_id}`
+        : `${authController.getFrontendUrl(req)}#access_token=${
+            session.access_token
+          }&refresh_token=${session.refresh_token}&user_id=${user.user_id}`;
 
       console.log('✅ OAuth callback completed successfully');
+      console.log('🍎 iOS redirect URL:', redirectUrl);
 
-      // Special handling for iOS
-      if (isIOS && isSafari) {
+      // Always use iOS handler for iOS devices
+      if (isIOS) {
         return authController.handleIOSRedirect(res, redirectUrl, false);
       }
 
@@ -630,16 +642,14 @@ const authController = {
       console.error('❌ OAuth callback error:', error);
       const userAgent = req.headers['user-agent'] || '';
       const isIOS = /iPad|iPhone|iPod/.test(userAgent);
-      const isSafari = /Safari/.test(userAgent) && !/Chrome/.test(userAgent);
 
-      const redirectUrl = `${authController.getFrontendUrl(
-        req,
-      )}#error=oauth_failed`;
+      const redirectUrl = isIOS
+        ? `com.dortac.dusfrontend://oauth/callback?error=oauth_failed`
+        : `${authController.getFrontendUrl(req)}#error=oauth_failed`;
 
-      if (isIOS && isSafari) {
+      if (isIOS) {
         return authController.handleIOSRedirect(res, redirectUrl, true);
       }
-
       res.redirect(redirectUrl);
     }
   },
