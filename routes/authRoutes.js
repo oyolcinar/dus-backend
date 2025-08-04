@@ -403,4 +403,40 @@ router.post('/refresh-token', authController.refreshToken);
  */
 router.get('/me', authSupabase, authController.getCurrentUser);
 
+/**
+ * @swagger
+ * /api/auth/debug-headers:
+ *   get:
+ *     summary: Debug headers for OAuth (REMOVE IN PRODUCTION)
+ *     tags: [Authentication]
+ *     responses:
+ *       200:
+ *         description: Header debug info
+ */
+router.get('/debug-headers', (req, res) => {
+  const userAgent = req.headers['user-agent'] || '';
+  const isIOS = /iPad|iPhone|iPod/.test(userAgent);
+  const isSafari = /Safari/.test(userAgent) && !/Chrome/.test(userAgent);
+
+  res.json({
+    headers: req.headers,
+    userAgent: userAgent,
+    isIOS: isIOS,
+    isSafari: isSafari,
+    buildType: req.headers['x-build-type'],
+    customScheme: req.headers['x-app-scheme'],
+    detectedPlatform: isIOS ? 'iOS' : 'Other',
+    browserType: isSafari ? 'Safari' : 'Other',
+    frontendUrl: authController.getFrontendUrl(req),
+    environment: {
+      FRONTEND_URL_EXPO_GO: process.env.FRONTEND_URL_EXPO_GO,
+      FRONTEND_URL_EAS_BUILD: process.env.FRONTEND_URL_EAS_BUILD,
+      FRONTEND_URL_DEFAULT: process.env.FRONTEND_URL_DEFAULT,
+      IOS_FRONTEND_URL: process.env.IOS_FRONTEND_URL,
+      IOS_UNIVERSAL_LINK: process.env.IOS_UNIVERSAL_LINK,
+      IOS_FALLBACK_URL: process.env.IOS_FALLBACK_URL,
+    },
+  });
+});
+
 module.exports = router;

@@ -7,32 +7,83 @@ const userModel = require('../models/userModel');
 const { supabaseUrl, supabaseKey } = require('../config/supabase');
 
 const authController = {
-  // Smart URL detection for different build types - FIXED VERSION
+  // Smart URL detection for different build types - ENHANCED WITH iOS SUPPORT
   getFrontendUrl(req, isPasswordReset = false) {
-    // Check for custom header from mobile app
-    const buildType = req.headers['x-build-type']; // 'expo-go' or 'eas-build'
-    const customScheme = req.headers['x-app-scheme']; // Custom scheme from app
+    const buildType = req.headers['x-build-type'];
+    const customScheme = req.headers['x-app-scheme'];
+    const userAgent = req.headers['user-agent'] || '';
 
-    // Enhanced logging for debugging
+    // Detect iOS from user agent
+    const isIOS = /iPad|iPhone|iPod/.test(userAgent);
+    const isSafari = /Safari/.test(userAgent) && !/Chrome/.test(userAgent);
+
     console.log('getFrontendUrl DEBUG:', {
       buildType,
       customScheme,
       isPasswordReset,
-      'User-Agent': req.headers['user-agent'],
+      isIOS,
+      isSafari,
+      userAgent,
       FRONTEND_URL_EXPO_GO: process.env.FRONTEND_URL_EXPO_GO,
       FRONTEND_URL_EAS_BUILD: process.env.FRONTEND_URL_EAS_BUILD,
       FRONTEND_URL_DEFAULT: process.env.FRONTEND_URL_DEFAULT,
+      // iOS specific URLs
+      IOS_UNIVERSAL_LINK: process.env.IOS_UNIVERSAL_LINK,
+      IOS_FALLBACK_URL: process.env.IOS_FALLBACK_URL,
     });
 
-    // If app sends custom scheme, use it (this is the preferred method)
+    // If app sends custom scheme, use it (but handle iOS differently)
     if (customScheme) {
       const suffix = isPasswordReset ? '/reset-password' : '';
+
+      // For iOS, we might need a different approach
+      if (isIOS && isSafari) {
+        // iOS Safari - try universal link first, fallback to custom scheme
+        const universalLink = process.env.IOS_UNIVERSAL_LINK;
+        if (universalLink) {
+          const finalUrl = `${universalLink}${suffix}`;
+          console.log(`Using iOS Universal Link: ${finalUrl}`);
+          return finalUrl;
+        }
+      }
+
       const finalUrl = `${customScheme}${suffix}`;
       console.log(`Using custom scheme: ${finalUrl}`);
       return finalUrl;
     }
 
-    // Based on build type header
+    // iOS-specific handling
+    if (isIOS) {
+      console.log('🍎 iOS detected, using iOS-specific redirect');
+
+      if (buildType === 'expo-go') {
+        const url = isPasswordReset
+          ? process.env.PASSWORD_RESET_REDIRECT_URL_EXPO_GO
+          : process.env.FRONTEND_URL_EXPO_GO;
+        console.log(`Using iOS Expo Go URL: ${url}`);
+        return url;
+      }
+
+      if (buildType === 'eas-build') {
+        const url = isPasswordReset
+          ? process.env.IOS_PASSWORD_RESET_URL ||
+            process.env.PASSWORD_RESET_REDIRECT_URL_EAS_BUILD
+          : process.env.IOS_FRONTEND_URL || process.env.FRONTEND_URL_EAS_BUILD;
+        console.log(`Using iOS EAS build URL: ${url}`);
+        return url;
+      }
+
+      // iOS default - prefer universal links
+      const universalLink = process.env.IOS_UNIVERSAL_LINK;
+      if (universalLink) {
+        const suffix = isPasswordReset ? '/reset-password' : '';
+        const finalUrl = `${universalLink}${suffix}`;
+        console.log(`Using iOS Universal Link (default): ${finalUrl}`);
+        return finalUrl;
+      }
+    }
+
+    // Based on build type header (for non-iOS)
     if (buildType === 'expo-go') {
       const url = isPasswordReset
         ? process.env.PASSWORD_RESET_REDIRECT_URL_EXPO_GO
@@ -49,20 +100,180 @@ const authController = {
       return url;
     }
 
-    // Default to EAS build URLs (production) - FIXED DEFAULT VALUES
+    // Default fallback
     const defaultUrl = isPasswordReset
       ? process.env.PASSWORD_RESET_REDIRECT_URL_DEFAULT ||
-        'dus-app://reset-password' // Fixed: was using wrong scheme
-      : process.env.FRONTEND_URL_DEFAULT || 'dus-app://'; // Fixed: was using wrong scheme
+        'com.dusapptr.dusapp://reset-password'
+      : process.env.FRONTEND_URL_DEFAULT || 'com.dusapptr.dusapp://';
 
-    // Log the redirect URL for debugging
     console.log(
       `OAuth redirect URL (default): ${defaultUrl} (build-type: ${
         buildType || 'default'
       })`,
     );
-
     return defaultUrl;
+  },
+
+  // iOS-Specific Redirect Handler
+  handleIOSRedirect(res, redirectUrl, isError = false) {
+    console.log('🍎 Handling iOS redirect:', redirectUrl);
+
+    // Create an HTML page that attempts multiple redirect methods for iOS
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>${
+            isError ? 'Authentication Error' : 'Authentication Success'
+          }</title>
+          <style>
+              body {
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+                  display: flex;
+                  justify-content: center;
+                  align-items: center;
+                  min-height: 100vh;
+                  margin: 0;
+                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                  color: white;
+                  text-align: center;
+                  padding: 20px;
+              }
+              .container {
+                  background: rgba(255, 255, 255, 0.1);
+                  backdrop-filter: blur(10px);
+                  border-radius: 20px;
+                  padding: 40px;
+                  max-width: 400px;
+                  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+              }
+              .icon {
+                  font-size: 64px;
+                  margin-bottom: 20px;
+              }
+              h1 {
+                  margin: 0 0 20px 0;
+                  font-size: 24px;
+                  font-weight: 600;
+              }
+              p {
+                  margin: 0 0 30px 0;
+                  opacity: 0.9;
+                  line-height: 1.5;
+              }
+              .btn {
+                  background: rgba(255, 255, 255, 0.2);
+                  border: 1px solid rgba(255, 255, 255, 0.3);
+                  color: white;
+                  padding: 12px 24px;
+                  border-radius: 12px;
+                  font-size: 16px;
+                  cursor: pointer;
+                  transition: all 0.3s ease;
+                  text-decoration: none;
+                  display: inline-block;
+                  margin: 10px;
+              }
+              .btn:hover {
+                  background: rgba(255, 255, 255, 0.3);
+                  transform: translateY(-2px);
+              }
+              .debug {
+                  margin-top: 30px;
+                  font-size: 12px;
+                  opacity: 0.7;
+                  word-break: break-all;
+              }
+          </style>
+      </head>
+      <body>
+          <div class="container">
+              <div class="icon">${isError ? '❌' : '✅'}</div>
+              <h1>${
+                isError ? 'Authentication Error' : 'Authentication Success'
+              }</h1>
+              <p>
+                  ${
+                    isError
+                      ? 'There was an issue with authentication. Trying to redirect you back to the app...'
+                      : 'Authentication successful! Redirecting you back to the app...'
+                  }
+              </p>
+              
+              <a href="${redirectUrl}" class="btn" onclick="attemptRedirect()">
+                  Open App
+              </a>
+              
+              <div class="debug">
+                  <strong>Redirect URL:</strong><br>
+                  ${redirectUrl}
+              </div>
+          </div>
+
+          <script>
+              const redirectUrl = '${redirectUrl}';
+              let redirectAttempted = false;
+
+              function attemptRedirect() {
+                  if (redirectAttempted) return;
+                  redirectAttempted = true;
+                  
+                  console.log('🍎 Attempting iOS redirect to:', redirectUrl);
+                  
+                  // Method 1: Direct redirect
+                  try {
+                      window.location.href = redirectUrl;
+                  } catch (e) {
+                      console.warn('Direct redirect failed:', e);
+                  }
+                  
+                  // Method 2: Use setTimeout for iOS Safari
+                  setTimeout(() => {
+                      try {
+                          window.location.replace(redirectUrl);
+                      } catch (e) {
+                          console.warn('Replace redirect failed:', e);
+                      }
+                  }, 100);
+                  
+                  // Method 3: Create invisible iframe (sometimes works on iOS)
+                  setTimeout(() => {
+                      try {
+                          const iframe = document.createElement('iframe');
+                          iframe.style.display = 'none';
+                          iframe.src = redirectUrl;
+                          document.body.appendChild(iframe);
+                          
+                          // Remove iframe after attempt
+                          setTimeout(() => {
+                              document.body.removeChild(iframe);
+                          }, 1000);
+                      } catch (e) {
+                          console.warn('Iframe redirect failed:', e);
+                      }
+                  }, 200);
+              }
+
+              // Auto-attempt redirect after page loads
+              window.addEventListener('load', () => {
+                  setTimeout(attemptRedirect, 500);
+              });
+              
+              // Also try when page becomes visible (iOS Safari focus handling)
+              document.addEventListener('visibilitychange', () => {
+                  if (!document.hidden && !redirectAttempted) {
+                      setTimeout(attemptRedirect, 100);
+                  }
+              });
+          </script>
+      </body>
+      </html>
+    `;
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
   },
 
   // Register a new user with Supabase
@@ -143,23 +354,23 @@ const authController = {
         });
       }
 
-      // Get the Supabase auth_id
-      const authId = authData.user.id;
+      // The database trigger has automatically created the user in public.users
+      // Wait a moment then fetch the created user
+      await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second
 
-      // Create user in our database with the auth_id
-      const newUser = await userModel.createWithAuthId(
-        username,
-        email,
-        password,
-        authId,
-      );
+      const user = await userModel.findByAuthId(authData.user.id);
+
+      if (!user) {
+        console.error('❌ User was not created by database trigger');
+        return res.status(500).json({ message: 'User registration failed' });
+      }
 
       // Log successful registration
       console.log(
-        `User registered successfully: ${email} (ID: ${newUser.user_id})`,
+        `User registered successfully: ${email} (ID: ${user.user_id})`,
       );
 
-      // FIXED: Create a proper session for the new user
+      // Create a proper session for the new user
       const { data: sessionData, error: sessionError } =
         await supabase.auth.signInWithPassword({
           email,
@@ -176,11 +387,11 @@ const authController = {
       res.status(201).json({
         message: 'User registered successfully',
         user: {
-          userId: newUser.user_id,
-          username: newUser.username,
-          email: newUser.email,
-          role: newUser.role,
-          subscriptionType: newUser.subscription_type,
+          userId: user.user_id,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+          subscriptionType: user.subscription_type,
         },
         session: sessionData?.session || null,
       });
@@ -302,22 +513,41 @@ const authController = {
     }
   },
 
-  // In authController.js - oauthCallback function
+  // ENHANCED OAuth callback with iOS support and database trigger integration
   async oauthCallback(req, res) {
+    console.log('🔄 OAuth callback started');
+    console.log('User Agent:', req.headers['user-agent']);
+
     try {
       const { code, error, error_description } = req.query;
+      const userAgent = req.headers['user-agent'] || '';
+      const isIOS = /iPad|iPhone|iPod/.test(userAgent);
+      const isSafari = /Safari/.test(userAgent) && !/Chrome/.test(userAgent);
 
       if (error) {
+        console.error('❌ OAuth error:', { error, error_description });
         const redirectUrl = `${authController.getFrontendUrl(
           req,
         )}#error=${encodeURIComponent(error_description || error)}`;
+
+        // For iOS Safari, add a fallback page
+        if (isIOS && isSafari) {
+          return authController.handleIOSRedirect(res, redirectUrl, true);
+        }
+
         return res.redirect(redirectUrl);
       }
 
       if (!code) {
+        console.error('❌ No authorization code received');
         const redirectUrl = `${authController.getFrontendUrl(
           req,
         )}#error=authorization_required`;
+
+        if (isIOS && isSafari) {
+          return authController.handleIOSRedirect(res, redirectUrl, true);
+        }
+
         return res.redirect(redirectUrl);
       }
 
@@ -328,50 +558,93 @@ const authController = {
         await supabase.auth.exchangeCodeForSession(code);
 
       if (authError) {
+        console.error('❌ Failed to exchange code for session:', authError);
         const redirectUrl = `${authController.getFrontendUrl(
           req,
         )}#error=${encodeURIComponent(authError.message)}`;
+
+        if (isIOS && isSafari) {
+          return authController.handleIOSRedirect(res, redirectUrl, true);
+        }
+
         return res.redirect(redirectUrl);
       }
 
       const { user: authUser, session } = data;
+      console.log('✅ Session exchange successful for user:', authUser.email);
 
-      // Check if user exists in database
-      let user = await userModel.findByAuthId(authUser.id);
+      // The database trigger has already created the user in public.users
+      // We just need to fetch it (with a small delay to ensure trigger completed)
+      let user = null;
+      let attempts = 0;
+      const maxAttempts = 5;
 
-      if (!user) {
-        // Create new OAuth user
-        const provider = authUser.app_metadata?.provider || 'oauth';
-        const userData = authController.extractUserDataFromProvider(
-          authUser,
-          provider,
-        );
-        user = await userModel.createOAuthUser(
-          userData.username,
-          userData.email,
-          authUser.id,
-          provider,
-        );
+      while (!user && attempts < maxAttempts) {
+        user = await userModel.findByAuthId(authUser.id);
+
+        if (!user) {
+          console.log(
+            `⏳ User not found yet, attempt ${
+              attempts + 1
+            }/${maxAttempts}, waiting...`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 500)); // Wait 500ms
+          attempts++;
+        }
       }
 
-      // FIXED: Redirect to mobile app with tokens in URL fragment
+      if (!user) {
+        console.error('❌ User was not created by database trigger');
+        const redirectUrl = `${authController.getFrontendUrl(
+          req,
+        )}#error=user_creation_failed`;
+
+        if (isIOS && isSafari) {
+          return authController.handleIOSRedirect(res, redirectUrl, true);
+        }
+
+        return res.redirect(redirectUrl);
+      }
+
+      console.log('✅ User found in database:', {
+        userId: user.user_id,
+        username: user.username,
+        email: user.email,
+        provider: user.oauth_provider,
+      });
+
+      // Redirect to mobile app with tokens
       const redirectUrl = `${authController.getFrontendUrl(req)}#access_token=${
         session.access_token
-      }&refresh_token=${session.refresh_token}`;
+      }&refresh_token=${session.refresh_token}&user_id=${user.user_id}`;
 
-      console.log(`OAuth success redirect: ${redirectUrl}`);
+      console.log('✅ OAuth callback completed successfully');
+
+      // Special handling for iOS
+      if (isIOS && isSafari) {
+        return authController.handleIOSRedirect(res, redirectUrl, false);
+      }
+
       res.redirect(redirectUrl);
     } catch (error) {
-      console.error('OAuth callback error:', error);
+      console.error('❌ OAuth callback error:', error);
+      const userAgent = req.headers['user-agent'] || '';
+      const isIOS = /iPad|iPhone|iPod/.test(userAgent);
+      const isSafari = /Safari/.test(userAgent) && !/Chrome/.test(userAgent);
+
       const redirectUrl = `${authController.getFrontendUrl(
         req,
       )}#error=oauth_failed`;
+
+      if (isIOS && isSafari) {
+        return authController.handleIOSRedirect(res, redirectUrl, true);
+      }
+
       res.redirect(redirectUrl);
     }
   },
 
   // Start OAuth flow - UPDATED FOR DIRECT MOBILE REDIRECT
-  // In authController.js - startOAuth function
   async startOAuth(req, res) {
     try {
       const { provider } = req.params;
@@ -382,7 +655,7 @@ const authController = {
 
       const supabase = createClient(supabaseUrl, supabaseKey);
 
-      // FIXED: Use backend callback URL first, then redirect to mobile
+      // Use backend callback URL first, then redirect to mobile
       const backendCallbackUrl = `${req.protocol}://${req.get(
         'host',
       )}/api/auth/oauth/callback`;
@@ -450,22 +723,16 @@ const authController = {
       let dbUser = await userModel.findByAuthId(authUser.id);
 
       if (!dbUser) {
-        // Extract user info from Apple response
-        const username =
-          user?.name?.firstName && user?.name?.lastName
-            ? `${user.name.firstName} ${user.name.lastName}`
-            : authUser.email?.split('@')[0] || `user_${Date.now()}`;
+        // Wait for database trigger or manually find user
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        dbUser = await userModel.findByAuthId(authUser.id);
 
-        const email = authUser.email || user?.email;
-
-        dbUser = await userModel.createOAuthUser(
-          username,
-          email,
-          authUser.id,
-          'apple',
-        );
-
-        console.log(`Apple user created: ${email}`);
+        if (!dbUser) {
+          console.error(
+            'Apple Sign In: User was not created by database trigger',
+          );
+          return res.status(500).json({ message: 'User creation failed' });
+        }
       }
 
       // Get user permissions
@@ -590,7 +857,7 @@ const authController = {
     }
   },
 
-  // Password reset request - FIXED: Use proper function reference
+  // Password reset request
   async requestPasswordReset(req, res) {
     try {
       const { email } = req.body;
