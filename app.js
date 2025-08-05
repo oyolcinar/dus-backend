@@ -264,7 +264,8 @@ app.use((err, req, res, next) => {
 });
 
 // 404 HANDLER (simplified)
-app.use('/{*any}', (req, res) => {
+// ✅ CORRECT
+app.use('*', (req, res) => {
   res.status(404).json({
     message: 'Route not found',
     path: req.originalUrl,
