@@ -2,9 +2,9 @@ const notificationService = require('./notificationService');
 const achievementService = require('./achievementService');
 
 /**
- * Notification Helper Functions
+ * Notification Helper Functions (Course-Based System)
  * These functions provide easy-to-use interfaces for sending specific types of notifications
- * Updated with full achievement integration and enhanced error handling
+ * Updated with full achievement integration and course-based study tracking
  */
 
 class NotificationHelpers {
@@ -337,25 +337,130 @@ class NotificationHelpers {
     }
   }
 
-  // ENHANCED: Study session completed notification with achievement check
-  static async handleStudySessionCompleted(userId, sessionData) {
+  // UPDATED: Course study session completed notification with achievement check
+  static async handleCourseStudySessionCompleted(userId, sessionData) {
     try {
-      console.log(`🎓 Handling study session completion for user ${userId}`);
+      console.log(
+        `🎓 Handling course study session completion for user ${userId}`,
+      );
+      console.log('📊 Session data:', {
+        courseId: sessionData.courseId,
+        studyDurationSeconds: sessionData.studyDurationSeconds,
+        breakDurationSeconds: sessionData.breakDurationSeconds,
+        sessionDate: sessionData.sessionDate,
+      });
 
-      // Trigger achievement check after study session
+      // Trigger achievement check after course study session
       const newAchievements = await achievementService.triggerAchievementCheck(
         userId,
-        'study_session_completed',
+        'course_study_session_completed', // ✅ UPDATED ACTION TYPE
       );
 
       console.log(
-        `🏆 User ${userId} earned ${newAchievements.length} achievements after study session`,
+        `🏆 User ${userId} earned ${newAchievements.length} achievements after course study session`,
       );
+
+      // Optional: Send study completion notification
+      if (sessionData.studyDurationSeconds > 1800) {
+        // > 30 minutes
+        try {
+          await notificationService.sendNotification(
+            userId,
+            'study_reminder',
+            'study_session_completed',
+            {
+              course_title: sessionData.courseTitle || 'Course',
+              study_duration_minutes: Math.round(
+                sessionData.studyDurationSeconds / 60,
+              ),
+              break_duration_minutes: Math.round(
+                (sessionData.breakDurationSeconds || 0) / 60,
+              ),
+            },
+          );
+        } catch (notificationError) {
+          console.error(
+            'Error sending study completion notification:',
+            notificationError,
+          );
+          // Don't throw - notification failure shouldn't break achievement check
+        }
+      }
+
       return newAchievements;
     } catch (error) {
-      console.error('Error handling study session completion:', error);
+      console.error('Error handling course study session completion:', error);
       throw error;
     }
+  }
+
+  // NEW: Course completion handler with achievement check
+  static async handleCourseCompletion(userId, courseData) {
+    try {
+      console.log(`🎯 Handling course completion for user ${userId}`);
+      console.log('📚 Course data:', {
+        courseId: courseData.courseId,
+        courseTitle: courseData.courseTitle,
+        completionPercentage: courseData.completionPercentage,
+      });
+
+      // Trigger achievement check after course completion
+      const newAchievements = await achievementService.triggerAchievementCheck(
+        userId,
+        'course_completed', // ✅ NEW ACTION TYPE
+      );
+
+      console.log(
+        `🏆 User ${userId} earned ${newAchievements.length} achievements after completing course`,
+      );
+
+      // Send course completion notification
+      try {
+        await notificationService.sendNotification(
+          userId,
+          'achievement_unlock',
+          'course_completed',
+          {
+            course_title: courseData.courseTitle,
+            course_id: courseData.courseId,
+            completion_date: new Date().toISOString(),
+          },
+        );
+      } catch (notificationError) {
+        console.error(
+          'Error sending course completion notification:',
+          notificationError,
+        );
+        // Don't throw - notification failure shouldn't break achievement check
+      }
+
+      return newAchievements;
+    } catch (error) {
+      console.error('Error handling course completion:', error);
+      throw error;
+    }
+  }
+
+  // LEGACY: Study session completed (redirects to course-based handler)
+  static async handleStudySessionCompleted(userId, sessionData) {
+    console.log(
+      `⚠️ Legacy handleStudySessionCompleted called - redirecting to course-based handler`,
+    );
+
+    // Convert legacy session data to course session data format
+    const courseSessionData = {
+      courseId: sessionData.courseId || sessionData.course_id,
+      courseTitle: sessionData.courseTitle || sessionData.course_title,
+      studyDurationSeconds:
+        sessionData.studyDurationSeconds || sessionData.duration_seconds,
+      breakDurationSeconds: sessionData.breakDurationSeconds || 0,
+      sessionDate: sessionData.sessionDate || sessionData.session_date,
+    };
+
+    return await this.handleCourseStudySessionCompleted(
+      userId,
+      courseSessionData,
+    );
   }
 
   // ENHANCED: User registration completed with achievement check
@@ -385,7 +490,9 @@ class NotificationHelpers {
   // ENHANCED: Check achievements for all users (for cron job)
   static async checkAllUsersAchievements() {
     try {
-      console.log('🔍 Running achievement check for all users...');
+      console.log(
+        '🔍 Running achievement check for all users (course-based system)...',
+      );
 
       const results = await achievementService.checkAllUsersAchievements();
 
@@ -400,7 +507,9 @@ class NotificationHelpers {
   // NEW: Manual achievement check helper for testing
   static async triggerManualAchievementCheck(userId) {
     try {
-      console.log(`🧪 Manual achievement check triggered for user ${userId}`);
+      console.log(
+        `🧪 Manual achievement check triggered for user ${userId} (course-based)`,
+      );
 
       const newAchievements = await achievementService.manualAchievementCheck(
         userId,
@@ -424,7 +533,7 @@ class NotificationHelpers {
   // NEW: Achievement statistics helper
   static async getAchievementStatistics() {
     try {
-      console.log('📊 Getting achievement statistics...');
+      console.log('📊 Getting achievement statistics (course-based system)...');
 
       const stats = await achievementService.getAchievementStats();
 
@@ -436,7 +545,7 @@ class NotificationHelpers {
     }
   }
 
-  // Enhanced: Schedule recurring notifications with better error handling
+  // UPDATED: Schedule recurring notifications with course-based data
   static async scheduleRecurringNotifications() {
     try {
       const { createClient } = require('@supabase/supabase-js');
@@ -451,7 +560,7 @@ class NotificationHelpers {
           user_id,
           frequency_hours,
           updated_at,
-          users!inner(username, total_study_time)
+          users!inner(username)
         `,
         )
         .eq('notification_type', 'study_reminder')
@@ -468,20 +577,43 @@ class NotificationHelpers {
         const hoursSinceUpdate = (now - lastUpdated) / (1000 * 60 * 60);
 
         if (hoursSinceUpdate >= pref.frequency_hours) {
-          notifications.push({
-            userId: pref.user_id,
-            notificationType: 'study_reminder',
-            templateName: 'daily_study_reminder',
-            variables: {
-              streak_days: Math.floor(pref.users.total_study_time / 3600) || 0,
-            },
-          });
+          // UPDATED: Get course-based study streak
+          try {
+            const userStats = await achievementService.getUserStats(
+              pref.user_id,
+            );
+
+            notifications.push({
+              userId: pref.user_id,
+              notificationType: 'study_reminder',
+              templateName: 'daily_study_reminder',
+              variables: {
+                streak_days: userStats.current_study_streak || 0,
+                total_courses_studied: userStats.courses_studied || 0,
+                total_study_hours: Math.round(
+                  (userStats.total_course_study_time_seconds || 0) / 3600,
+                ),
+              },
+            });
+          } catch (statsError) {
+            console.error(
+              `Error getting stats for user ${pref.user_id}:`,
+              statsError,
+            );
+            // Fallback notification without stats
+            notifications.push({
+              userId: pref.user_id,
+              notificationType: 'study_reminder',
+              templateName: 'daily_study_reminder',
+              variables: { streak_days: 0 },
+            });
+          }
         }
       }
 
       if (notifications.length > 0) {
         console.log(
-          `📤 Sending ${notifications.length} scheduled study reminders`,
+          `📤 Sending ${notifications.length} scheduled study reminders (course-based)`,
         );
         return await notificationService.sendBulkNotifications(notifications);
       }
@@ -598,7 +730,7 @@ class NotificationHelpers {
         notificationType: 'plan_reminder',
         templateName: 'study_plan_reminder',
         variables: {
-          activity_title: 'Günlük Çalışma Etkinliği',
+          activity_title: 'Günlük Ders Çalışma Etkinliği',
           plan_id: Date.now(),
         },
       }));
@@ -615,7 +747,7 @@ class NotificationHelpers {
     }
   }
 
-  // Enhanced: Send streak reminders for users with long streaks
+  // UPDATED: Send streak reminders based on course study data
   static async sendStreakReminders() {
     try {
       const { createClient } = require('@supabase/supabase-js');
@@ -632,18 +764,38 @@ class NotificationHelpers {
 
       if (prefError) throw prefError;
 
-      const notifications = preferences.map((pref) => ({
-        userId: pref.user_id,
-        notificationType: 'streak_reminder',
-        templateName: 'streak_warning',
-        variables: {
-          streak_days: 7,
-          streak_type: 'study',
-        },
-      }));
+      const notifications = [];
+
+      // Get streak data for each user
+      for (const pref of preferences) {
+        try {
+          const userStats = await achievementService.getUserStats(pref.user_id);
+
+          // Only send streak reminder if user has a streak >= 3 days
+          if (userStats.current_study_streak >= 3) {
+            notifications.push({
+              userId: pref.user_id,
+              notificationType: 'streak_reminder',
+              templateName: 'streak_warning',
+              variables: {
+                streak_days: userStats.current_study_streak,
+                streak_type: 'course_study',
+                total_courses: userStats.courses_studied || 0,
+              },
+            });
+          }
+        } catch (statsError) {
+          console.error(
+            `Error getting streak for user ${pref.user_id}:`,
+            statsError,
+          );
+        }
+      }
 
       if (notifications.length > 0) {
-        console.log(`🔥 Sending ${notifications.length} streak reminders`);
+        console.log(
+          `🔥 Sending ${notifications.length} streak reminders (course-based)`,
+        );
         return await notificationService.sendBulkNotifications(notifications);
       }
 
@@ -757,7 +909,9 @@ class NotificationHelpers {
   // NEW: Send test notification for specific user
   static async sendTestNotification(userId, message = 'Test notification') {
     try {
-      console.log(`🧪 Sending test notification to user ${userId}`);
+      console.log(
+        `🧪 Sending test notification to user ${userId} (course-based system)`,
+      );
 
       return await notificationService.sendNotification(
         userId,
@@ -770,6 +924,53 @@ class NotificationHelpers {
       );
     } catch (error) {
       console.error('Error sending test notification:', error);
+      throw error;
+    }
+  }
+
+  // NEW: Course-specific notification helpers
+  static async sendCourseSpecificNotification(
+    userId,
+    courseId,
+    notificationType,
+    templateName,
+    variables = {},
+  ) {
+    try {
+      console.log(
+        `📚 Sending course-specific notification for user ${userId}, course ${courseId}`,
+      );
+
+      // Get course details
+      const { createClient } = require('@supabase/supabase-js');
+      const { supabaseUrl, supabaseKey } = require('../config/supabase');
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      const { data: course, error } = await supabase
+        .from('courses')
+        .select('title, description, course_type')
+        .eq('course_id', courseId)
+        .single();
+
+      if (error) throw error;
+
+      // Add course data to variables
+      const enhancedVariables = {
+        ...variables,
+        course_id: courseId,
+        course_title: course.title,
+        course_description: course.description,
+        course_type: course.course_type,
+      };
+
+      return await notificationService.sendNotification(
+        userId,
+        notificationType,
+        templateName,
+        enhancedVariables,
+      );
+    } catch (error) {
+      console.error('Error sending course-specific notification:', error);
       throw error;
     }
   }

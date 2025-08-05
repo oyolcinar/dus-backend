@@ -28,7 +28,7 @@ const userModel = {
     const query = `
       SELECT user_id, username, email, password_hash, date_registered, 
              total_duels, duels_won, duels_lost, longest_losing_streak, 
-             current_losing_streak, total_study_time, subscription_type
+             current_losing_streak, total_study_time, subscription_type, preferred_course_id
       FROM users
       WHERE email = $1
     `;
@@ -42,7 +42,7 @@ const userModel = {
     const query = `
       SELECT user_id, username, email, date_registered, 
              total_duels, duels_won, duels_lost, longest_losing_streak,
-             current_losing_streak, total_study_time, subscription_type, role
+             current_losing_streak, total_study_time, subscription_type, role, preferred_course_id
       FROM users
       WHERE user_id = $1
     `;
@@ -104,7 +104,7 @@ const userModel = {
     return result.rows[0];
   },
 
-  // Update study time
+  // Update study time (Updated for course-based system)
   async updateStudyTime(userId, durationInSeconds) {
     const query = `
       UPDATE users
@@ -117,6 +117,57 @@ const userModel = {
     return result.rows[0];
   },
 
+  // Get user's study statistics (Updated for course-based system)
+  async getStudyStatistics(userId) {
+    const query = `
+      SELECT 
+        u.user_id,
+        u.username,
+        u.total_study_time as legacy_study_time,
+        u.preferred_course_id,
+        pc.title as preferred_course_title,
+        COALESCE(stats.courses_studied, 0) as courses_studied,
+        COALESCE(stats.courses_completed, 0) as courses_completed,
+        COALESCE(stats.total_study_seconds, 0) as total_study_seconds,
+        COALESCE(stats.total_sessions, 0) as total_sessions,
+        COALESCE(stats.avg_session_duration_seconds, 0) as avg_session_duration_seconds,
+        stats.last_study_date,
+        COALESCE(stats.total_break_seconds, 0) as total_break_seconds,
+        COALESCE(stats.courses_studied_this_week, 0) as courses_studied_this_week
+      FROM users u
+      LEFT JOIN courses pc ON u.preferred_course_id = pc.course_id
+      LEFT JOIN user_study_statistics stats ON u.user_id = stats.user_id
+      WHERE u.user_id = $1
+    `;
+
+    const result = await db.query(query, [userId]);
+    return result.rows[0];
+  },
+
+  // Get user's course progress summary
+  async getCourseProgressSummary(userId) {
+    const query = `
+      SELECT 
+        course_id,
+        course_title,
+        course_description,
+        course_type,
+        total_study_seconds_in_course as study_time_seconds,
+        total_study_hours_in_course as study_time_hours,
+        completion_percentage,
+        last_studied_in_course as last_studied_at,
+        is_preferred_course,
+        total_sessions_in_course as session_count,
+        total_break_seconds_in_course as break_time_seconds
+      FROM user_all_courses_statistics
+      WHERE user_id = $1
+      ORDER BY last_studied_in_course DESC NULLS LAST
+    `;
+
+    const result = await db.query(query, [userId]);
+    return result.rows;
+  },
+
   // Update subscription type
   async updateSubscriptionType(userId, subscriptionType) {
     const query = `
@@ -127,6 +178,19 @@ const userModel = {
     `;
 
     const result = await db.query(query, [userId, subscriptionType]);
+    return result.rows[0];
+  },
+
+  // Update preferred course
+  async updatePreferredCourse(userId, courseId) {
+    const query = `
+      UPDATE users
+      SET preferred_course_id = $2
+      WHERE user_id = $1
+      RETURNING user_id, preferred_course_id
+    `;
+
+    const result = await db.query(query, [userId, courseId]);
     return result.rows[0];
   },
 
@@ -149,7 +213,7 @@ const userModel = {
       SELECT user_id, username, email, password_hash, date_registered, 
              total_duels, duels_won, duels_lost, longest_losing_streak, 
              current_losing_streak, total_study_time, subscription_type,
-             role, auth_id, oauth_provider
+             role, auth_id, oauth_provider, preferred_course_id
       FROM users
       WHERE auth_id = $1
     `;
@@ -171,7 +235,7 @@ const userModel = {
       VALUES ($1, $2, $3, 0, 0, 0, 0, 0, 0, 'free', $4, 'student')
       RETURNING user_id, username, email, date_registered, total_duels, 
                 duels_won, duels_lost, longest_losing_streak, current_losing_streak, 
-                total_study_time, subscription_type, role, auth_id
+                total_study_time, subscription_type, role, auth_id, preferred_course_id
     `;
 
     const values = [username, email, hashedPassword, authId];
@@ -192,7 +256,7 @@ const userModel = {
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, 0, 0, 0, 0)
         RETURNING user_id, username, email, subscription_type, role, 
-                  date_registered, auth_id, oauth_provider
+                  date_registered, auth_id, oauth_provider, preferred_course_id
       `;
 
       // Use a placeholder password hash for OAuth users
@@ -329,7 +393,7 @@ const userModel = {
         SELECT user_id, username, email, password_hash, date_registered, 
                total_duels, duels_won, duels_lost, longest_losing_streak, 
                current_losing_streak, total_study_time, subscription_type,
-               role, auth_id, oauth_provider
+               role, auth_id, oauth_provider, preferred_course_id
         FROM users
         WHERE email = $1
       `;
@@ -374,11 +438,97 @@ const userModel = {
       throw error;
     }
   },
+
+  // Initialize notification preferences
   async initializeNotificationPreferences(userId) {
     try {
       return await notificationService.initializeDefaultPreferences(userId);
     } catch (error) {
       console.error('Error initializing notification preferences:', error);
+      throw error;
+    }
+  },
+
+  // Get user's study streak (course-based)
+  async getStudyStreak(userId) {
+    try {
+      const query = `
+        WITH daily_study AS (
+          SELECT DISTINCT session_date
+          FROM user_course_study_sessions
+          WHERE user_id = $1 
+            AND session_status = 'completed'
+          ORDER BY session_date DESC
+        ),
+        streak_calc AS (
+          SELECT 
+            session_date,
+            session_date - ROW_NUMBER() OVER (ORDER BY session_date DESC)::integer AS streak_group
+          FROM daily_study
+        )
+        SELECT COUNT(*) as current_streak
+        FROM streak_calc
+        WHERE streak_group = (
+          SELECT streak_group 
+          FROM streak_calc 
+          WHERE session_date = CURRENT_DATE
+          LIMIT 1
+        );
+      `;
+
+      const result = await db.query(query, [userId]);
+      return result.rows[0]?.current_streak || 0;
+    } catch (error) {
+      console.error('Error getting study streak:', error);
+      throw error;
+    }
+  },
+
+  // Get user's weekly study goal progress
+  async getWeeklyStudyProgress(userId) {
+    try {
+      const query = `
+        SELECT 
+          COALESCE(SUM(study_duration_seconds), 0) as total_study_seconds_this_week,
+          COUNT(DISTINCT session_date) as study_days_this_week,
+          COUNT(DISTINCT course_id) as courses_studied_this_week
+        FROM user_course_study_sessions
+        WHERE user_id = $1 
+          AND session_status = 'completed'
+          AND session_date >= DATE_TRUNC('week', CURRENT_DATE)
+      `;
+
+      const result = await db.query(query, [userId]);
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error getting weekly study progress:', error);
+      throw error;
+    }
+  },
+
+  // Get user's most studied course
+  async getMostStudiedCourse(userId) {
+    try {
+      const query = `
+        SELECT 
+          c.course_id,
+          c.title,
+          c.description,
+          ucd.total_study_time_seconds,
+          ucd.total_session_count,
+          ucd.completion_percentage
+        FROM user_course_details ucd
+        JOIN courses c ON ucd.course_id = c.course_id
+        WHERE ucd.user_id = $1
+          AND ucd.total_study_time_seconds > 0
+        ORDER BY ucd.total_study_time_seconds DESC
+        LIMIT 1
+      `;
+
+      const result = await db.query(query, [userId]);
+      return result.rows[0] || null;
+    } catch (error) {
+      console.error('Error getting most studied course:', error);
       throw error;
     }
   },

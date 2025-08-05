@@ -116,9 +116,13 @@ class AchievementService {
     }
   }
 
-  // Get comprehensive user statistics
+  // UPDATED: Get comprehensive user statistics (COURSE-BASED)
   async getUserStats(userId) {
     try {
+      console.log(
+        `📊 Getting user stats for achievements (course-based) - User ${userId}`,
+      );
+
       // Get basic user data
       const { data: user, error: userError } = await supabase
         .from('users')
@@ -128,43 +132,58 @@ class AchievementService {
 
       if (userError) throw userError;
 
-      // Get distinct study days count
+      // UPDATED: Get course study sessions instead of topic sessions
       const { data: studySessions, error: studyError } = await supabase
-        .from('user_topic_study_sessions')
-        .select('session_date')
-        .eq('user_id', userId);
+        .from('user_course_study_sessions') // ✅ NEW TABLE
+        .select('session_date, study_duration_seconds')
+        .eq('user_id', userId)
+        .eq('session_status', 'completed'); // Only completed sessions
 
       if (studyError) throw studyError;
 
       // Count distinct study days
       const distinctStudyDays = new Set(
-        studySessions.map((session) => session.session_date),
+        (studySessions || []).map((session) => session.session_date),
       ).size;
 
-      // Calculate total study time from sessions (in minutes)
-      const { data: sessionDurations, error: durationError } = await supabase
-        .from('user_topic_study_sessions')
-        .select('duration_seconds')
-        .eq('user_id', userId)
-        .not('duration_seconds', 'is', null);
-
-      if (durationError) throw durationError;
-
-      const totalStudyTimeMinutes = sessionDurations.reduce(
-        (total, session) => total + session.duration_seconds / 60,
+      // Calculate total study time from course sessions (in minutes)
+      const totalStudyTimeMinutes = (studySessions || []).reduce(
+        (total, session) => total + (session.study_duration_seconds || 0) / 60,
         0,
       );
 
-      // Get study streak data
+      // UPDATED: Get study streak data from course sessions
       const studyStreak = await this.calculateStudyStreak(
         userId,
-        studySessions,
+        studySessions || [],
+      );
+
+      // UPDATED: Get course-based statistics
+      const { data: courseStats, error: courseStatsError } = await supabase
+        .from('user_course_details')
+        .select(
+          'course_id, total_study_time_seconds, total_session_count, is_completed',
+        )
+        .eq('user_id', userId);
+
+      if (courseStatsError) throw courseStatsError;
+
+      // Calculate course-based metrics
+      const coursesStudied = (courseStats || []).filter(
+        (c) => c.total_study_time_seconds > 0,
+      ).length;
+      const coursesCompleted = (courseStats || []).filter(
+        (c) => c.is_completed,
+      ).length;
+      const totalCourseStudyTime = (courseStats || []).reduce(
+        (sum, c) => sum + (c.total_study_time_seconds || 0),
+        0,
       );
 
       // Check for weekly champion status (if implemented)
       const weeklyChampionCount = await this.getWeeklyChampionCount(userId);
 
-      return {
+      const stats = {
         user_id: userId,
         date_registered: user.date_registered,
         total_duels: user.total_duels || 0,
@@ -176,14 +195,36 @@ class AchievementService {
         longest_study_streak: studyStreak.longest,
         weekly_champion_count: weeklyChampionCount,
         user_registration: true, // User exists, so they're registered
+
+        // NEW: Course-based metrics
+        courses_studied: coursesStudied,
+        courses_completed: coursesCompleted,
+        total_course_study_time_seconds: totalCourseStudyTime,
+        total_course_study_time_minutes: Math.floor(totalCourseStudyTime / 60),
+        total_course_sessions: (courseStats || []).reduce(
+          (sum, c) => sum + (c.total_session_count || 0),
+          0,
+        ),
       };
+
+      console.log(`📈 Course-based user stats computed:`, {
+        userId,
+        distinctStudyDays,
+        coursesStudied,
+        coursesCompleted,
+        totalStudyTimeMinutes: stats.total_study_time_minutes,
+        currentStreak: studyStreak.current,
+        longestStreak: studyStreak.longest,
+      });
+
+      return stats;
     } catch (error) {
       console.error('Error getting user stats:', error);
       throw error;
     }
   }
 
-  // Calculate study streak from session dates
+  // UPDATED: Calculate study streak from course session dates
   calculateStudyStreak(userId, studySessions) {
     try {
       if (!studySessions || studySessions.length === 0) {
@@ -236,6 +277,12 @@ class AchievementService {
       }
       longestStreak = Math.max(longestStreak, tempStreak);
 
+      console.log(`🔥 Study streak calculated for user ${userId}:`, {
+        current: currentStreak,
+        longest: Math.max(longestStreak, currentStreak),
+        totalStudyDays: uniqueDates.length,
+      });
+
       return {
         current: currentStreak,
         longest: Math.max(longestStreak, currentStreak),
@@ -249,7 +296,7 @@ class AchievementService {
   // Get weekly champion count (placeholder - implement based on your weekly champion logic)
   async getWeeklyChampionCount(userId) {
     try {
-      // TODO: Implement weekly champion tracking
+      // TODO: Implement weekly champion tracking based on course study performance
       // This would require a separate table/system to track weekly champions
       // For now, return 0 until you implement weekly champion functionality
       return 0;
@@ -336,9 +383,11 @@ class AchievementService {
   // Check achievements for all active users (for cron job)
   async checkAllUsersAchievements(limit = 100) {
     try {
-      console.log('Checking achievements for all users...');
+      console.log(
+        '🔍 Checking achievements for all users (course-based system)...',
+      );
 
-      // Get all active users (you might want to add criteria like recent activity)
+      // UPDATED: Get all active users with recent course study activity
       const { data: users, error } = await supabase
         .from('users')
         .select('user_id')
@@ -360,7 +409,7 @@ class AchievementService {
         ),
       };
 
-      console.log('Achievement check summary:', summary);
+      console.log('🎯 Achievement check summary (course-based):', summary);
       return { results, summary };
     } catch (error) {
       console.error('Error checking all users achievements:', error);
@@ -372,13 +421,24 @@ class AchievementService {
   async triggerAchievementCheck(userId, actionType) {
     try {
       console.log(
-        `Triggering achievement check for user ${userId} after ${actionType}`,
+        `🎯 Triggering achievement check for user ${userId} after ${actionType} (course-based)`,
       );
 
       // Different actions might trigger different achievement checks for optimization
       switch (actionType) {
-        case 'study_session_completed':
+        case 'course_study_session_completed': // ✅ UPDATED
           // Check study-related achievements
+          return await this.checkUserAchievements(userId);
+
+        case 'course_completed': // ✅ NEW
+          // Check course completion achievements
+          return await this.checkUserAchievements(userId);
+
+        case 'study_session_completed': // ✅ LEGACY SUPPORT
+          // Legacy support - redirect to course-based
+          console.log(
+            '⚠️ Using legacy study_session_completed - redirecting to course-based',
+          );
           return await this.checkUserAchievements(userId);
 
         case 'duel_completed':
@@ -477,7 +537,9 @@ class AchievementService {
   // NEW: Manual achievement check for testing
   async manualAchievementCheck(userId) {
     try {
-      console.log(`🧪 Manual achievement check for user ${userId}`);
+      console.log(
+        `🧪 Manual achievement check for user ${userId} (course-based)`,
+      );
 
       const newAchievements = await this.checkUserAchievements(userId);
 
@@ -536,6 +598,89 @@ class AchievementService {
       };
     } catch (error) {
       console.error('Error getting achievement stats:', error);
+      throw error;
+    }
+  }
+
+  // NEW: Course-specific achievement helpers
+  async checkCourseAchievements(userId, courseId) {
+    try {
+      console.log(
+        `🎓 Checking course-specific achievements for user ${userId}, course ${courseId}`,
+      );
+
+      // Get course progress
+      const { data: courseProgress, error } = await supabase
+        .from('user_course_details')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('course_id', courseId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error;
+
+      if (!courseProgress) {
+        console.log(
+          `No course progress found for user ${userId}, course ${courseId}`,
+        );
+        return [];
+      }
+
+      // Trigger general achievement check which will include course-based metrics
+      return await this.checkUserAchievements(userId);
+    } catch (error) {
+      console.error('Error checking course achievements:', error);
+      throw error;
+    }
+  }
+
+  // NEW: Get course study metrics for achievements
+  async getCourseStudyMetrics(userId) {
+    try {
+      const { data: courseDetails, error } = await supabase
+        .from('user_course_details')
+        .select(
+          `
+          course_id,
+          total_study_time_seconds,
+          total_session_count,
+          is_completed,
+          completion_percentage,
+          courses(title, course_type)
+        `,
+        )
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      const metrics = {
+        total_courses_studied: (courseDetails || []).filter(
+          (c) => c.total_study_time_seconds > 0,
+        ).length,
+        total_courses_completed: (courseDetails || []).filter(
+          (c) => c.is_completed,
+        ).length,
+        total_study_time_all_courses: (courseDetails || []).reduce(
+          (sum, c) => sum + (c.total_study_time_seconds || 0),
+          0,
+        ),
+        course_types_studied: new Set(
+          (courseDetails || [])
+            .filter((c) => c.total_study_time_seconds > 0)
+            .map((c) => c.courses?.course_type),
+        ).size,
+        average_completion_percentage:
+          courseDetails?.length > 0
+            ? (courseDetails || []).reduce(
+                (sum, c) => sum + (c.completion_percentage || 0),
+                0,
+              ) / courseDetails.length
+            : 0,
+      };
+
+      return metrics;
+    } catch (error) {
+      console.error('Error getting course study metrics:', error);
       throw error;
     }
   }
