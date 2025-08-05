@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const NotificationHelpers = require('./notificationHelpers');
+const deviceTokenModel = require('../models/deviceTokenModel');
 
 class NotificationCronJobs {
   constructor() {
@@ -8,7 +9,7 @@ class NotificationCronJobs {
 
   // Initialize all cron jobs
   init() {
-    console.log('Initializing notification cron jobs...');
+    console.log('Initializing enhanced notification cron jobs...');
 
     // Daily study reminders - 9 AM every day
     this.scheduleStudyReminders();
@@ -25,16 +26,27 @@ class NotificationCronJobs {
     // Streak reminders - Every 3 days at 7 PM
     this.scheduleStreakReminders();
 
-    // NEW: Achievement checking - Every 6 hours
+    // Achievement checking - Every 6 hours
     this.scheduleAchievementChecking();
 
     // Process pending notifications - Every 5 minutes
     this.schedulePendingNotificationProcessor();
 
+    // ENHANCED: Device token cleanup - Every 6 hours
+    this.scheduleDeviceTokenCleanup();
+
+    // ENHANCED: Stale token detection - Daily at 3 AM
+    this.scheduleStaleTokenDetection();
+
     // Cleanup old notifications - Every Sunday at 2 AM
     this.scheduleNotificationCleanup();
 
-    console.log(`${this.jobs.length} notification cron jobs initialized`);
+    // ENHANCED: Weekly comprehensive maintenance - Sunday at 4 AM
+    this.scheduleWeeklyMaintenance();
+
+    console.log(
+      `${this.jobs.length} enhanced notification cron jobs initialized`,
+    );
   }
 
   // Schedule daily study reminders
@@ -179,7 +191,7 @@ class NotificationCronJobs {
     });
   }
 
-  // NEW: Schedule achievement checking
+  // Schedule achievement checking
   scheduleAchievementChecking() {
     const job = cron.schedule(
       '0 */6 * * *', // Every 6 hours
@@ -232,6 +244,112 @@ class NotificationCronJobs {
     });
   }
 
+  // ENHANCED: Schedule device token cleanup
+  scheduleDeviceTokenCleanup() {
+    const job = cron.schedule(
+      '0 */6 * * *', // Every 6 hours
+      async () => {
+        console.log('Running device token cleanup job...');
+        try {
+          // Clean up duplicate tokens for all users
+          const { createClient } = require('@supabase/supabase-js');
+          const { supabaseUrl, supabaseKey } = require('../config/supabase');
+          const supabase = createClient(supabaseUrl, supabaseKey);
+
+          // Get all users with multiple active tokens
+          const { data: users, error } = await supabase
+            .from('user_notification_tokens')
+            .select('user_id')
+            .eq('is_active', true)
+            .group('user_id');
+
+          if (error) throw error;
+
+          let totalCleaned = 0;
+          for (const user of users || []) {
+            const result = await deviceTokenModel.cleanupDuplicateTokens(
+              user.user_id,
+            );
+            totalCleaned += result.cleaned_count;
+          }
+
+          // Clean old inactive tokens (older than 30 days)
+          const deletedTokens = await deviceTokenModel.deleteOldTokens(30);
+
+          console.log(
+            `🧹 Device token cleanup completed: ${totalCleaned} duplicates cleaned, ${deletedTokens.length} old tokens deleted`,
+          );
+        } catch (error) {
+          console.error('Error in device token cleanup cron job:', error);
+        }
+      },
+      {
+        scheduled: true,
+        timezone: 'Europe/Istanbul',
+      },
+    );
+
+    this.jobs.push({
+      name: 'device_token_cleanup',
+      schedule: '0 */6 * * *',
+      job,
+    });
+  }
+
+  // ENHANCED: Schedule stale token detection
+  scheduleStaleTokenDetection() {
+    const job = cron.schedule(
+      '0 3 * * *', // Daily at 3 AM
+      async () => {
+        console.log('Running stale token detection job...');
+        try {
+          // Find tokens that haven't been used in 60 days
+          const staleTokens = await deviceTokenModel.getStaleTokens(60);
+
+          if (staleTokens.length > 0) {
+            console.log(`🔍 Found ${staleTokens.length} stale tokens`);
+
+            // Test a sample of stale tokens
+            const sampleSize = Math.min(10, staleTokens.length);
+            const sampleTokens = staleTokens.slice(0, sampleSize);
+
+            let invalidCount = 0;
+            for (const token of sampleTokens) {
+              const testResult = await deviceTokenModel.testToken(
+                token.device_token,
+              );
+              if (!testResult.valid) {
+                await deviceTokenModel.disableToken(
+                  token.device_token,
+                  'stale_invalid',
+                );
+                invalidCount++;
+              }
+            }
+
+            console.log(
+              `📊 Stale token detection: ${invalidCount}/${sampleSize} sample tokens were invalid and disabled`,
+            );
+          } else {
+            console.log('✅ No stale tokens found');
+          }
+        } catch (error) {
+          console.error('Error in stale token detection cron job:', error);
+        }
+      },
+      {
+        scheduled: true,
+        timezone: 'Europe/Istanbul',
+      },
+    );
+
+    this.jobs.push({
+      name: 'stale_token_detection',
+      schedule: '0 3 * * *',
+      job,
+    });
+  }
+
   // Schedule notification cleanup
   scheduleNotificationCleanup() {
     const job = cron.schedule(
@@ -258,23 +376,109 @@ class NotificationCronJobs {
     });
   }
 
-  // NEW: Schedule intensive achievement check (weekly)
-  scheduleWeeklyAchievementCheck() {
+  // ENHANCED: Schedule weekly comprehensive maintenance
+  scheduleWeeklyMaintenance() {
     const job = cron.schedule(
-      '0 3 * * 0', // Every Sunday at 3 AM
+      '0 4 * * 0', // Every Sunday at 4 AM
       async () => {
-        console.log('Running intensive weekly achievement check...');
+        console.log('Running weekly comprehensive maintenance job...');
         try {
-          // Check all users with higher limit for comprehensive check
-          const achievementService = require('./achievementService');
-          const result = await achievementService.checkAllUsersAchievements(
-            500,
-          );
-          console.log(
-            `Weekly achievement check completed: ${result.summary.totalNewAchievements} new achievements awarded`,
-          );
+          const maintenanceResults = {
+            tokenCleanup: 0,
+            tokenDeletion: 0,
+            notificationCleanup: 0,
+            achievementCheck: 0,
+            errors: [],
+          };
+
+          // 1. Comprehensive token cleanup
+          try {
+            const { createClient } = require('@supabase/supabase-js');
+            const { supabaseUrl, supabaseKey } = require('../config/supabase');
+            const supabase = createClient(supabaseUrl, supabaseKey);
+
+            // Call the maintenance function
+            const { data: results, error } = await supabase.rpc(
+              'maintain_device_tokens',
+            );
+            if (error) throw error;
+
+            results.forEach((result) => {
+              if (result.action === 'deleted_old_tokens') {
+                maintenanceResults.tokenDeletion = result.count;
+              } else if (result.action === 'disabled_stale_tokens') {
+                maintenanceResults.tokenCleanup = result.count;
+              }
+            });
+          } catch (error) {
+            console.error('Error in token maintenance:', error);
+            maintenanceResults.errors.push(
+              'token_maintenance: ' + error.message,
+            );
+          }
+
+          // 2. Notification cleanup
+          try {
+            const notificationResult =
+              await NotificationHelpers.cleanupOldNotifications(90);
+            maintenanceResults.notificationCleanup = notificationResult.length;
+          } catch (error) {
+            console.error('Error in notification cleanup:', error);
+            maintenanceResults.errors.push(
+              'notification_cleanup: ' + error.message,
+            );
+          }
+
+          // 3. Comprehensive achievement check
+          try {
+            const achievementResult =
+              await NotificationHelpers.checkAllUsersAchievements();
+            maintenanceResults.achievementCheck =
+              achievementResult.summary.totalNewAchievements;
+          } catch (error) {
+            console.error('Error in achievement check:', error);
+            maintenanceResults.errors.push(
+              'achievement_check: ' + error.message,
+            );
+          }
+
+          // 4. Generate maintenance report
+          console.log('🔧 Weekly maintenance completed:', {
+            tokens_cleaned: maintenanceResults.tokenCleanup,
+            tokens_deleted: maintenanceResults.tokenDeletion,
+            notifications_cleaned: maintenanceResults.notificationCleanup,
+            achievements_awarded: maintenanceResults.achievementCheck,
+            errors: maintenanceResults.errors.length,
+          });
+
+          // 5. Send maintenance report to admins (optional)
+          if (process.env.ADMIN_USER_IDS) {
+            const adminIds = process.env.ADMIN_USER_IDS.split(',').map((id) =>
+              parseInt(id.trim()),
+            );
+            const reportMessage = `Haftalık bakım tamamlandı:
+• ${maintenanceResults.tokenCleanup} token temizlendi
+• ${maintenanceResults.tokenDeletion} eski token silindi  
+• ${maintenanceResults.notificationCleanup} eski bildirim silindi
+• ${maintenanceResults.achievementCheck} yeni başarı verildi
+• ${maintenanceResults.errors.length} hata`;
+
+            for (const adminId of adminIds) {
+              try {
+                await NotificationHelpers.sendTestNotification(
+                  adminId,
+                  reportMessage,
+                );
+              } catch (error) {
+                console.error(
+                  `Error sending maintenance report to admin ${adminId}:`,
+                  error,
+                );
+              }
+            }
+          }
         } catch (error) {
-          console.error('Error in weekly achievement check cron job:', error);
+          console.error('Error in weekly maintenance cron job:', error);
         }
       },
       {
@@ -284,10 +488,133 @@ class NotificationCronJobs {
     );
 
     this.jobs.push({
-      name: 'weekly_achievement_check',
-      schedule: '0 3 * * 0',
+      name: 'weekly_maintenance',
+      schedule: '0 4 * * 0',
       job,
     });
+  }
+
+  // ENHANCED: Manual device token cleanup trigger
+  async triggerDeviceTokenCleanup(userId = null) {
+    try {
+      console.log('🧹 Manually triggering device token cleanup...');
+
+      if (userId) {
+        // Clean tokens for specific user
+        const result = await deviceTokenModel.cleanupDuplicateTokens(userId);
+        console.log(
+          `✅ Cleaned ${result.cleaned_count} duplicate tokens for user ${userId}`,
+        );
+        return result;
+      } else {
+        // Clean tokens for all users
+        const { createClient } = require('@supabase/supabase-js');
+        const { supabaseUrl, supabaseKey } = require('../config/supabase');
+        const supabase = createClient(supabaseUrl, supabaseKey);
+
+        const { data: users, error } = await supabase
+          .from('user_notification_tokens')
+          .select('user_id')
+          .eq('is_active', true)
+          .group('user_id');
+
+        if (error) throw error;
+
+        let totalCleaned = 0;
+        for (const user of users || []) {
+          const result = await deviceTokenModel.cleanupDuplicateTokens(
+            user.user_id,
+          );
+          totalCleaned += result.cleaned_count;
+        }
+
+        console.log(
+          `✅ Cleaned ${totalCleaned} duplicate tokens across all users`,
+        );
+        return { cleaned_count: totalCleaned };
+      }
+    } catch (error) {
+      console.error('Error in manual device token cleanup:', error);
+      throw error;
+    }
+  }
+
+  // ENHANCED: Get comprehensive system status
+  async getSystemStatus() {
+    try {
+      console.log('📊 Getting comprehensive system status...');
+
+      // Token statistics
+      const tokenStats = await deviceTokenModel.getPlatformStats();
+
+      // Job status
+      const jobStatus = this.getJobStatus();
+
+      // Performance metrics
+      const performanceMetrics = this.getPerformanceMetrics();
+
+      // Recent activity (last 24 hours)
+      const { createClient } = require('@supabase/supabase-js');
+      const { supabaseUrl, supabaseKey } = require('../config/supabase');
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      const { data: recentNotifications, error: notifError } = await supabase
+        .from('notifications')
+        .select('status')
+        .gte('created_at', yesterday.toISOString());
+
+      if (notifError) throw notifError;
+
+      const recentStats = {
+        total: recentNotifications.length,
+        sent: recentNotifications.filter((n) => n.status === 'sent').length,
+        pending: recentNotifications.filter((n) => n.status === 'pending')
+          .length,
+        failed: recentNotifications.filter((n) => n.status === 'failed').length,
+      };
+
+      return {
+        timestamp: new Date().toISOString(),
+        token_stats: tokenStats,
+        job_status: jobStatus,
+        performance_metrics: performanceMetrics,
+        recent_activity: recentStats,
+        health_score: this.calculateHealthScore(
+          tokenStats,
+          recentStats,
+          jobStatus,
+        ),
+      };
+    } catch (error) {
+      console.error('Error getting system status:', error);
+      throw error;
+    }
+  }
+
+  // ENHANCED: Calculate system health score
+  calculateHealthScore(tokenStats, recentStats, jobStatus) {
+    let score = 100;
+
+    // Penalize for failed notifications
+    if (recentStats.total > 0) {
+      const failureRate = recentStats.failed / recentStats.total;
+      score -= Math.min(50, failureRate * 100);
+    }
+
+    // Penalize for stopped jobs
+    const stoppedJobs = jobStatus.filter((job) => !job.running).length;
+    const jobPenalty = (stoppedJobs / jobStatus.length) * 30;
+    score -= jobPenalty;
+
+    // Bonus for active tokens
+    if (tokenStats.total_active > 0) {
+      score += Math.min(10, tokenStats.total_active / 100);
+    }
+
+    return Math.max(0, Math.min(100, Math.round(score)));
   }
 
   // Schedule custom notification job
@@ -387,7 +714,7 @@ class NotificationCronJobs {
     return false;
   }
 
-  // NEW: Manual achievement check trigger
+  // Manual achievement check trigger
   async triggerAchievementCheck(userIds = null) {
     try {
       console.log('Manually triggering achievement check...');
@@ -540,7 +867,7 @@ class NotificationCronJobs {
     }
   }
 
-  // Get performance metrics
+  // ENHANCED: Get performance metrics
   getPerformanceMetrics() {
     return {
       total_jobs: this.jobs.length,
@@ -550,6 +877,9 @@ class NotificationCronJobs {
       recurring_jobs: this.jobs.filter((j) => !j.oneTime && !j.bulk).length,
       achievement_jobs: this.jobs.filter((j) => j.name.includes('achievement'))
         .length,
+      maintenance_jobs: this.jobs.filter(
+        (j) => j.name.includes('cleanup') || j.name.includes('maintenance'),
+      ).length,
     };
   }
 }

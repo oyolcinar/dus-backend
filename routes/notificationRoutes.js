@@ -433,7 +433,7 @@ router.put('/preferences', authSupabase, async (req, res) => {
  * @swagger
  * /api/notifications/device-token:
  *   post:
- *     summary: Register device token for push notifications
+ *     summary: Register device token for push notifications with enhanced validation
  *     tags: [Notifications]
  *     security:
  *       - bearerAuth: []
@@ -446,17 +446,40 @@ router.put('/preferences', authSupabase, async (req, res) => {
  *             properties:
  *               device_token:
  *                 type: string
- *                 description: Device token from Firebase/Apple
+ *                 description: Device token from Firebase/Apple/Expo
  *               platform:
  *                 type: string
  *                 enum: [ios, android, web]
  *                 description: Platform type
+ *               device_info:
+ *                 type: object
+ *                 properties:
+ *                   model:
+ *                     type: string
+ *                   os_version:
+ *                     type: string
+ *                   app_version:
+ *                     type: string
+ *                   device_id:
+ *                     type: string
+ *                   is_device:
+ *                     type: boolean
+ *                 description: Enhanced device information
  *             required:
  *               - device_token
  *               - platform
  *     responses:
  *       200:
  *         description: Device token registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 token:
+ *                   type: object
  *       400:
  *         description: Bad request
  *       401:
@@ -467,7 +490,14 @@ router.put('/preferences', authSupabase, async (req, res) => {
 router.post('/device-token', authSupabase, async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { device_token, platform } = req.body;
+    const { device_token, platform, device_info = {} } = req.body;
+
+    console.log('📝 Enhanced device token registration:', {
+      userId,
+      platform,
+      token: device_token?.substring(0, 20) + '...',
+      deviceInfo: device_info,
+    });
 
     if (!device_token || !platform) {
       return res
@@ -480,10 +510,12 @@ router.post('/device-token', authSupabase, async (req, res) => {
       return res.status(400).json({ error: 'Invalid platform' });
     }
 
-    const result = await notificationService.registerDeviceToken(
+    // Enhanced device token registration with device info
+    const result = await notificationService.registerDeviceTokenEnhanced(
       userId,
       device_token,
       platform,
+      device_info,
     );
 
     res.json({
@@ -492,6 +524,91 @@ router.post('/device-token', authSupabase, async (req, res) => {
     });
   } catch (error) {
     console.error('Error registering device token:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/notifications/device-token/clear:
+ *   post:
+ *     summary: Clear all device tokens for authenticated user
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Device tokens cleared successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 cleared_count:
+ *                   type: integer
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/device-token/clear', authSupabase, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    console.log(`🧹 Clearing device tokens for user ${userId}`);
+
+    const result = await notificationService.clearUserDeviceTokens(userId);
+
+    res.json({
+      message: 'Device tokens cleared successfully',
+      cleared_count: result.cleared_count,
+    });
+  } catch (error) {
+    console.error('Error clearing device tokens:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/notifications/device-token/debug:
+ *   get:
+ *     summary: Get device token debug information for authenticated user
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Device token debug information
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 tokens:
+ *                   type: array
+ *                 active_count:
+ *                   type: integer
+ *                 platforms:
+ *                   type: array
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/device-token/debug', authSupabase, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    console.log(`🔍 Getting device token debug info for user ${userId}`);
+
+    const debugInfo = await notificationService.getDeviceTokenDebugInfo(userId);
+
+    res.json(debugInfo);
+  } catch (error) {
+    console.error('Error getting device token debug info:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -520,6 +637,9 @@ router.post('/device-token', authSupabase, async (req, res) => {
  *               variables:
  *                 type: object
  *                 description: Variables to replace in template
+ *               test_push:
+ *                 type: boolean
+ *                 description: Whether to send actual push notification
  *             required:
  *               - template_name
  *               - notification_type
@@ -536,7 +656,12 @@ router.post('/device-token', authSupabase, async (req, res) => {
 router.post('/test', authSupabase, async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { template_name, notification_type, variables = {} } = req.body;
+    const {
+      template_name,
+      notification_type,
+      variables = {},
+      test_push = false,
+    } = req.body;
 
     if (!template_name || !notification_type) {
       return res
@@ -544,16 +669,25 @@ router.post('/test', authSupabase, async (req, res) => {
         .json({ error: 'template_name and notification_type are required' });
     }
 
-    const notification = await notificationService.sendNotification(
+    console.log(`🧪 Sending test notification to user ${userId}:`, {
+      template_name,
+      notification_type,
+      test_push,
+    });
+
+    // Enhanced test notification with optional push testing
+    const notification = await notificationService.sendTestNotificationEnhanced(
       userId,
       notification_type,
       template_name,
       variables,
+      test_push,
     );
 
     res.json({
       message: 'Test notification sent successfully',
       notification,
+      push_sent: test_push,
     });
   } catch (error) {
     console.error('Error sending test notification:', error);
