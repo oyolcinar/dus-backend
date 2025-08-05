@@ -1,4 +1,4 @@
-// =================== START: COMPLETE duelSessionService.js FILE ===================
+// =================== START: COMPLETE duelSessionService.js FILE with 60s timing ===================
 
 const { createClient } = require('@supabase/supabase-js');
 const supabaseConfig = require('../config/supabase');
@@ -9,6 +9,9 @@ const supabase = createClient(
   supabaseConfig.supabaseUrl,
   supabaseConfig.supabaseKey,
 );
+
+// ✅ CONSTANTS: Hard-coded 60 second timing
+const QUESTION_TIME_LIMIT = 60000; // 60 seconds in milliseconds
 
 const duelSessionService = {
   async getDuelById(duelId) {
@@ -239,6 +242,7 @@ const duelSessionService = {
         .eq('session_id', sessionId)
         .single();
       if (sessionError) throw sessionError;
+
       const questionDetails = session.questions?.[questionIndex];
       if (!questionDetails) {
         console.error(
@@ -246,12 +250,14 @@ const duelSessionService = {
         );
         return { questionIndex, question: {}, answers: [] };
       }
+
       const { data: answersData, error: answersError } = await supabase
         .from('duel_answers')
         .select('user_id, selected_answer, is_correct, answer_time_ms')
         .eq('session_id', sessionId)
         .eq('question_index', questionIndex);
       if (answersError) throw answersError;
+
       return {
         questionIndex,
         question: {
@@ -273,6 +279,7 @@ const duelSessionService = {
     }
   },
 
+  // ✅ UPDATED: autoSubmitUnanswered with 60s timing
   async autoSubmitUnanswered(sessionId, questionIndex) {
     try {
       const { data: session, error: sessionError } = await supabase
@@ -281,6 +288,7 @@ const duelSessionService = {
         .eq('session_id', sessionId)
         .single();
       if (sessionError) throw sessionError;
+
       const currentQuestion = session.questions?.[questionIndex];
       if (!currentQuestion || !currentQuestion.question_id) {
         console.error(
@@ -288,23 +296,27 @@ const duelSessionService = {
         );
         return;
       }
+
       const { data: duel, error: duelError } = await supabase
         .from('duels')
         .select('initiator_id, opponent_id')
         .eq('duel_id', session.duel_id)
         .single();
       if (duelError) throw duelError;
+
       const { data: existingAnswers, error: answersError } = await supabase
         .from('duel_answers')
         .select('user_id')
         .eq('session_id', sessionId)
         .eq('question_index', questionIndex);
       if (answersError) throw answersError;
+
       const answeredUserIds = existingAnswers.map((a) => a.user_id);
       const allUserIds = [duel.initiator_id, duel.opponent_id];
       const unansweredUserIds = allUserIds.filter(
         (id) => !answeredUserIds.includes(id),
       );
+
       if (unansweredUserIds.length > 0) {
         const autoSubmissions = unansweredUserIds.map((userId) => ({
           session_id: sessionId,
@@ -313,13 +325,15 @@ const duelSessionService = {
           question_index: questionIndex,
           selected_answer: null,
           is_correct: false,
-          answer_time_ms: 30000,
+          answer_time_ms: QUESTION_TIME_LIMIT, // ✅ NOW 60000ms = 60 seconds
         }));
+
         console.log(
-          `⏰ Auto-submitting timeout answers for users: ${unansweredUserIds.join(
+          `⏰ Auto-submitting 60s timeout answers for users: ${unansweredUserIds.join(
             ', ',
           )}`,
         );
+
         const { error: insertError } = await supabase
           .from('duel_answers')
           .insert(autoSubmissions);
@@ -330,6 +344,7 @@ const duelSessionService = {
     }
   },
 
+  // ✅ UPDATED: calculateFinalResults with 60s timing
   async calculateFinalResults(sessionId) {
     try {
       const { data: answers, error } = await supabase
@@ -337,6 +352,7 @@ const duelSessionService = {
         .select('user_id, is_correct, answer_time_ms')
         .eq('session_id', sessionId);
       if (error || !answers || answers.length < 1) return null;
+
       const userScores = {};
       const { data: session, error: sessionError } = await supabase
         .from('duel_sessions')
@@ -344,6 +360,7 @@ const duelSessionService = {
         .eq('session_id', sessionId)
         .single();
       if (sessionError) return null;
+
       const { data: duel, error: duelError } = await supabase
         .from('duels')
         .select('initiator_id, opponent_id')
@@ -361,7 +378,7 @@ const duelSessionService = {
           userScores[answer.user_id].totalQuestions++;
           if (answer.is_correct) userScores[answer.user_id].correctAnswers++;
           userScores[answer.user_id].totalTime +=
-            answer.answer_time_ms || 30000;
+            answer.answer_time_ms || QUESTION_TIME_LIMIT; // ✅ NOW 60000ms = 60 seconds
         }
       });
 
@@ -410,23 +427,29 @@ const duelSessionService = {
         .eq('session_id', sessionId)
         .single();
       if (sessionError) throw sessionError;
+
       await supabase
         .from('duel_sessions')
         .update({ status: 'completed', ended_at: new Date().toISOString() })
         .eq('session_id', sessionId);
+
       await duelModel.complete(session.duel_id);
+
       const { user1, user2, winnerId } = finalResults;
       const duel = await duelModel.getById(session.duel_id);
+
       let initiatorScore =
         user1.userId === duel.initiator_id ? user1.score : user2.score;
       let opponentScore =
         user1.userId === duel.opponent_id ? user1.score : user2.score;
+
       await duelResultModel.create(
         session.duel_id,
         winnerId,
         initiatorScore,
         opponentScore,
       );
+
       if (winnerId) {
         await this.updateUserStats(winnerId, true);
         const loserId = winnerId === user1.userId ? user2.userId : user1.userId;
@@ -460,11 +483,13 @@ const duelSessionService = {
           total_duels: supabase.raw('total_duels + 1'),
           current_losing_streak: 0,
         };
+
       const { error } = await supabase
         .from('users')
         .update(updateData)
         .eq('user_id', userId);
       if (error) throw error;
+
       if (won === false) {
         const { data: user, error: userError } = await supabase
           .from('users')

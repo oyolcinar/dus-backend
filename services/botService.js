@@ -1,4 +1,4 @@
-// services/botService.js
+// services/botService.js - UPDATED with 60s timing
 const { createClient } = require('@supabase/supabase-js');
 const supabaseConfig = require('../config/supabase');
 const duelModel = require('../models/duelModel');
@@ -7,6 +7,11 @@ const supabase = createClient(
   supabaseConfig.supabaseUrl,
   supabaseConfig.supabaseKey,
 );
+
+// ✅ CONSTANTS: Hard-coded 60 second timing for bots
+const QUESTION_TIME_LIMIT = 60000; // 60 seconds in milliseconds
+const BOT_MIN_THINKING_TIME = 3000; // 3 seconds minimum
+const BOT_MAX_THINKING_TIME = 57000; // 57 seconds maximum (3 second buffer)
 
 const botService = {
   // Get all available bots
@@ -147,7 +152,7 @@ const botService = {
     }
   },
 
-  // Simulate bot answering a question
+  // ✅ UPDATED: Simulate bot answering a question with 60s timing
   async simulateBotAnswer(
     botUserId,
     questionId,
@@ -170,7 +175,12 @@ const botService = {
       const randomFactor = 0.3; // ±30% variation
       const thinkingTime =
         baseTime + (Math.random() - 0.5) * 2 * randomFactor * baseTime;
-      const clampedTime = Math.max(2000, Math.min(28000, thinkingTime)); // Between 2-28 seconds
+
+      // ✅ USE 60s timing constants with buffer for question time limit
+      const clampedTime = Math.max(
+        BOT_MIN_THINKING_TIME, // 3 seconds minimum
+        Math.min(BOT_MAX_THINKING_TIME, thinkingTime), // 57 seconds maximum
+      );
 
       // Determine if bot answers correctly based on accuracy rate
       const willAnswerCorrectly = Math.random() < bot.accuracy_rate;
@@ -195,6 +205,12 @@ const botService = {
         selectedAnswer =
           wrongOptions[Math.floor(Math.random() * wrongOptions.length)];
       }
+
+      console.log(
+        `🤖 Bot will answer in ${Math.floor(clampedTime / 1000)}s (${
+          willAnswerCorrectly ? 'correct' : 'wrong'
+        })`,
+      );
 
       return {
         selectedAnswer,

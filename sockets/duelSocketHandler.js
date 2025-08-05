@@ -1,4 +1,4 @@
-// =================== START: COMPLETE and FINAL duelSocketHandler.js ===================
+// =================== START: COMPLETE duelSocketHandler.js with SERVER-CONTROLLED TIMING ===================
 
 const { supabaseUrl, supabaseKey } = require('../config/supabase');
 const { createClient } = require('@supabase/supabase-js');
@@ -11,6 +11,14 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const activeSessions = new Map();
 const userSockets = new Map();
 const botSessions = new Map(); // duelId -> bot session info
+
+// ✅ NEW: Track active question timers for server-controlled timing
+const activeQuestionTimers = new Map(); // duelId -> timer info
+
+// ✅ CONSTANTS: Hard-coded 60 second timing
+const QUESTION_TIME_LIMIT = 60000; // 60 seconds in milliseconds
+const BOT_MIN_THINKING_TIME = 3000; // 3 seconds minimum
+const BOT_MAX_THINKING_TIME = 57000; // 57 seconds maximum (3 second buffer)
 
 const setupDuelSockets = (io) => {
   io.use(async (socket, next) => {
@@ -300,11 +308,14 @@ const setupDuelSockets = (io) => {
             userId: socket.userId,
             username: socket.username,
           });
-          botSessions.delete(duelId);
+
+          // ✅ NEW: Clean up timers when user disconnects
           if (session.connectedUsers.size === 0) {
+            cleanupDuelTimers(duelId);
             setTimeout(() => activeSessions.delete(duelId), 30000);
           }
         }
+        botSessions.delete(duelId);
       }
     });
   });
@@ -371,7 +382,7 @@ async function startDuelSession(duelId, roomName, io) {
   }
 }
 
-// Replace your presentNextQuestion function with this enhanced version:
+// ✅ COMPLETELY REWRITTEN: presentNextQuestion with server-controlled timing
 async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
   try {
     const session = activeSessions.get(duelId);
@@ -430,13 +441,20 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
         session.questions.length
       } for duel ${duelId}`,
     );
-    console.log(`📝 Question details:`, {
-      id: currentQuestion.question_id,
-      text: currentQuestion.question_text.substring(0, 50) + '...',
-      optionCount: Object.keys(currentQuestion.options || {}).length,
+
+    // ✅ NEW: Server-controlled timing starts here
+    const questionStartTime = Date.now();
+    const timeLimit = QUESTION_TIME_LIMIT; // 60 seconds
+
+    // Store timer info for this duel
+    activeQuestionTimers.set(duelId, {
+      startTime: questionStartTime,
+      timeLimit,
+      questionIndex: session.currentQuestionIndex,
+      endTime: questionStartTime + timeLimit,
     });
 
-    // SEND THE QUESTION
+    // ✅ SEND THE QUESTION WITH SERVER TIMESTAMP
     io.to(roomName).emit('question_presented', {
       questionIndex: session.currentQuestionIndex,
       totalQuestions: session.questions.length,
@@ -445,14 +463,19 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
         text: currentQuestion.question_text,
         options: currentQuestion.options,
       },
-      timeLimit: 30000,
+      timeLimit: timeLimit, // 60000ms = 60 seconds
+      serverStartTime: questionStartTime, // Server timestamp
+      serverEndTime: questionStartTime + timeLimit, // When question ends
     });
 
     console.log(
       `✅ Question ${
         session.currentQuestionIndex + 1
-      } sent to room ${roomName}`,
+      } sent to room ${roomName} with 60s server-controlled timing`,
     );
+
+    // ✅ NEW: Start server-side timer broadcasts
+    startServerTimerBroadcast(duelId, roomName, io, timeLimit);
 
     // Handle bot answer if needed
     if (botInfo.isOpponentBot) {
@@ -465,26 +488,39 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
       );
     }
 
-    // Set timeout for auto-submit
+    // ✅ ENHANCED: Server-controlled auto-submit with exact 60s timing
     setTimeout(async () => {
       const currentSession = activeSessions.get(duelId);
+      const timerInfo = activeQuestionTimers.get(duelId);
+
       if (
         currentSession &&
-        currentSession.currentQuestionIndex === session.currentQuestionIndex &&
+        timerInfo &&
+        currentSession.currentQuestionIndex === timerInfo.questionIndex &&
         !currentSession.processingLock
       ) {
         console.log(
-          `⏰ Timeout for question ${
+          `⏰ 60s timeout for question ${
             session.currentQuestionIndex + 1
           } in duel ${duelId}`,
         );
+
+        // Broadcast that time is up
+        io.to(roomName).emit('question_time_up', {
+          questionIndex: session.currentQuestionIndex,
+          serverTime: Date.now(),
+        });
+
         await duelSessionService.autoSubmitUnanswered(
           session.sessionId,
           session.currentQuestionIndex,
         );
         await checkAndProcessRoundResult(duelId, currentSession, io);
+
+        // Clean up timer
+        activeQuestionTimers.delete(duelId);
       }
-    }, 30000);
+    }, timeLimit); // 60000ms = 60 seconds
   } catch (error) {
     console.error(`💥 Error presenting question for duel ${duelId}:`, error);
     io.to(roomName).emit('room_error', {
@@ -494,6 +530,47 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
   }
 }
 
+// ✅ NEW: Server-side timer broadcast function
+function startServerTimerBroadcast(duelId, roomName, io, timeLimit) {
+  const timerInfo = activeQuestionTimers.get(duelId);
+  if (!timerInfo) return;
+
+  // Broadcast timer updates every second
+  const timerInterval = setInterval(() => {
+    const now = Date.now();
+    const elapsed = now - timerInfo.startTime;
+    const remaining = Math.max(0, timeLimit - elapsed);
+
+    // Stop broadcasting when time is up or session is gone
+    if (remaining <= 0 || !activeSessions.has(duelId)) {
+      clearInterval(timerInterval);
+      return;
+    }
+
+    // Broadcast remaining time to all players
+    io.to(roomName).emit('timer_update', {
+      timeRemaining: Math.ceil(remaining / 1000), // Convert to seconds
+      serverTime: now,
+      questionIndex: timerInfo.questionIndex,
+    });
+  }, 1000);
+
+  // Store interval reference for cleanup
+  if (timerInfo) {
+    timerInfo.broadcastInterval = timerInterval;
+  }
+}
+
+// ✅ NEW: Cleanup function to clear timers
+function cleanupDuelTimers(duelId) {
+  const timerInfo = activeQuestionTimers.get(duelId);
+  if (timerInfo && timerInfo.broadcastInterval) {
+    clearInterval(timerInfo.broadcastInterval);
+  }
+  activeQuestionTimers.delete(duelId);
+}
+
+// ✅ UPDATED: Enhanced bot answer with 60s timing
 async function handleBotAnswer(
   duelId,
   botUserId,
@@ -617,8 +694,12 @@ async function processRoundResult(duelId, session, io) {
   }
 }
 
+// ✅ UPDATED: Enhanced completeDuel with timer cleanup
 async function completeDuel(duelId, roomName, io) {
   try {
+    // Clean up any active timers
+    cleanupDuelTimers(duelId);
+
     const session = activeSessions.get(duelId);
     if (!session) return;
 
@@ -644,10 +725,12 @@ async function completeDuel(duelId, roomName, io) {
     botSessions.delete(duelId);
     setTimeout(() => {
       activeSessions.delete(duelId);
+      cleanupDuelTimers(duelId); // Extra cleanup
       console.log(`🧹 Cleaned up completed session for duel ${duelId}`);
     }, 60000);
   } catch (error) {
     console.error('Error completing duel:', error);
+    cleanupDuelTimers(duelId);
   }
 }
 

@@ -1,7 +1,8 @@
-// Only making needed improvements to getUserAchievements while preserving everything else
+// Fixed achievementModel.js - REMOVED awardToUserWithNotification method
 const { createClient } = require('@supabase/supabase-js');
 const supabaseConfig = require('../config/supabase');
-const notificationService = require('../services/notificationService');
+// REMOVED: notificationService import to fix circular dependency
+// const notificationService = require('../services/notificationService');
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -110,7 +111,7 @@ const achievementModel = {
     }
   },
 
-  // Award achievement to user
+  // Award achievement to user (basic function without notification)
   async awardToUser(userId, achievementId) {
     try {
       const { data, error } = await supabase
@@ -230,33 +231,9 @@ const achievementModel = {
       throw error;
     }
   },
-  async awardToUserWithNotification(userId, achievementId) {
-    try {
-      // Use existing award function
-      const userAchievement = await this.awardToUser(userId, achievementId);
 
-      // Get achievement details for notification
-      const achievement = await this.getById(achievementId);
-
-      if (achievement) {
-        // Send achievement notification
-        await notificationService.sendNotification(
-          userId,
-          'achievement_unlock',
-          'achievement_unlock',
-          {
-            achievement_name: achievement.name,
-            achievement_id: achievementId,
-          },
-        );
-      }
-
-      return userAchievement;
-    } catch (error) {
-      console.error('Error awarding achievement with notification:', error);
-      throw error;
-    }
-  },
+  // REMOVED: awardToUserWithNotification method to fix circular dependency
+  // This functionality is now handled by achievementService.awardAchievementWithNotification()
 };
 
 module.exports = achievementModel;

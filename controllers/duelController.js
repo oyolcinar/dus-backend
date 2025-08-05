@@ -3,6 +3,7 @@ const duelResultModel = require('../models/duelResultModel');
 const userModel = require('../models/userModel');
 const testModel = require('../models/testModel');
 const topicModel = require('../models/topicModel');
+const courseModel = require('../models/courseModel');
 
 const duelController = {
   // Challenge a user to a duel

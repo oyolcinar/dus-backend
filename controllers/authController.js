@@ -1,10 +1,19 @@
 /**
  * Authentication controller for Supabase integration with OAuth support
+ * ENHANCED VERSION with proper session management
  */
 const { createClient } = require('@supabase/supabase-js');
 const bcrypt = require('bcrypt');
 const userModel = require('../models/userModel');
 const { supabaseUrl, supabaseKey } = require('../config/supabase');
+
+// Create a single Supabase client instance for server-side operations
+const supabaseServer = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    autoRefreshToken: false, // Server handles this manually
+    persistSession: false, // Server doesn't persist sessions
+  },
+});
 
 const authController = {
   // Smart URL detection for different build types - ENHANCED WITH iOS SUPPORT
@@ -312,12 +321,9 @@ const authController = {
         });
       }
 
-      // Initialize Supabase client with admin privileges
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
       // Create user in Supabase Auth
       const { data: authData, error: authError } =
-        await supabase.auth.admin.createUser({
+        await supabaseServer.auth.admin.createUser({
           email,
           password,
           email_confirm: true,
@@ -372,7 +378,7 @@ const authController = {
 
       // Create a proper session for the new user
       const { data: sessionData, error: sessionError } =
-        await supabase.auth.signInWithPassword({
+        await supabaseServer.auth.signInWithPassword({
           email,
           password,
         });
@@ -382,6 +388,18 @@ const authController = {
           'Failed to create session after registration:',
           sessionError,
         );
+        // Still return success but without session
+        return res.status(201).json({
+          message: 'User registered successfully, please login',
+          user: {
+            userId: user.user_id,
+            username: user.username,
+            email: user.email,
+            role: user.role,
+            subscriptionType: user.subscription_type,
+          },
+          session: null,
+        });
       }
 
       res.status(201).json({
@@ -413,12 +431,9 @@ const authController = {
           .json({ message: 'Email and password are required' });
       }
 
-      // Initialize Supabase client
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
       // Authenticate with Supabase
       const { data: authData, error: authError } =
-        await supabase.auth.signInWithPassword({
+        await supabaseServer.auth.signInWithPassword({
           email,
           password,
         });
@@ -514,8 +529,6 @@ const authController = {
   },
 
   // ENHANCED OAuth callback with iOS support and database trigger integration
-  // Update your authController.js oauthCallback function:
-
   async oauthCallback(req, res) {
     console.log('🔄 OAuth callback started');
     console.log('User Agent:', req.headers['user-agent']);
@@ -558,11 +571,9 @@ const authController = {
         return res.redirect(redirectUrl);
       }
 
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
       // Exchange code for session
       const { data, error: authError } =
-        await supabase.auth.exchangeCodeForSession(code);
+        await supabaseServer.auth.exchangeCodeForSession(code);
 
       if (authError) {
         console.error('❌ Failed to exchange code for session:', authError);
@@ -654,6 +665,90 @@ const authController = {
     }
   },
 
+  // NEW: Enhanced OAuth callback for frontend integration
+  async handleOAuthCallbackForFrontend(req, res) {
+    try {
+      const { code } = req.body || req.query;
+
+      if (!code) {
+        return res.status(400).json({
+          message: 'Authorization code is required',
+          code: 'MISSING_CODE',
+        });
+      }
+
+      console.log('🔄 Processing OAuth callback for frontend integration');
+
+      // Exchange code for session
+      const { data, error: authError } =
+        await supabaseServer.auth.exchangeCodeForSession(code);
+
+      if (authError) {
+        console.error('❌ Failed to exchange code for session:', authError);
+        return res.status(400).json({
+          message: 'Failed to exchange authorization code',
+          error: authError.message,
+          code: 'EXCHANGE_FAILED',
+        });
+      }
+
+      const { user: authUser, session } = data;
+      console.log('✅ Session exchange successful for user:', authUser.email);
+
+      // Get or wait for user in database
+      let user = null;
+      let attempts = 0;
+      const maxAttempts = 5;
+
+      while (!user && attempts < maxAttempts) {
+        user = await userModel.findByAuthId(authUser.id);
+        if (!user) {
+          console.log(
+            `⏳ User not found yet, attempt ${
+              attempts + 1
+            }/${maxAttempts}, waiting...`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          attempts++;
+        }
+      }
+
+      if (!user) {
+        console.error('❌ User was not created by database trigger');
+        return res.status(500).json({
+          message: 'User creation failed',
+          code: 'USER_CREATION_FAILED',
+        });
+      }
+
+      // Get user permissions
+      const userRoleData = await userModel.getUserRoleAndPermissions(
+        user.user_id,
+      );
+
+      console.log('✅ OAuth callback completed successfully via API');
+
+      res.json({
+        message: 'OAuth authentication successful',
+        user: {
+          userId: user.user_id,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+          subscriptionType: user.subscription_type,
+          permissions: userRoleData?.permissions || [],
+        },
+        session: session,
+      });
+    } catch (error) {
+      console.error('❌ OAuth callback API error:', error);
+      res.status(500).json({
+        message: 'OAuth callback processing failed',
+        code: 'CALLBACK_ERROR',
+      });
+    }
+  },
+
   // Start OAuth flow - UPDATED FOR DIRECT MOBILE REDIRECT
   async startOAuth(req, res) {
     try {
@@ -662,8 +757,6 @@ const authController = {
       if (!['google', 'apple', 'facebook'].includes(provider)) {
         return res.status(400).json({ message: 'Unsupported OAuth provider' });
       }
-
-      const supabase = createClient(supabaseUrl, supabaseKey);
 
       // Use backend callback URL first, then redirect to mobile
       const backendCallbackUrl = `${req.protocol}://${req.get(
@@ -675,7 +768,7 @@ const authController = {
         backendCallbackUrl,
       );
 
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabaseServer.auth.signInWithOAuth({
         provider,
         options: {
           redirectTo: backendCallbackUrl, // Backend handles callback first
@@ -710,10 +803,8 @@ const authController = {
         return res.status(400).json({ message: 'Apple ID token required' });
       }
 
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
       // Verify Apple ID token with Supabase
-      const { data, error } = await supabase.auth.signInWithIdToken({
+      const { data, error } = await supabaseServer.auth.signInWithIdToken({
         provider: 'apple',
         token: id_token,
         nonce: nonce,
@@ -814,10 +905,8 @@ const authController = {
         return res.status(400).json({ message: 'No active session' });
       }
 
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
       // Sign out the user from Supabase
-      const { error } = await supabase.auth.signOut({
+      const { error } = await supabaseServer.auth.signOut({
         jwt: token,
       });
 
@@ -848,9 +937,6 @@ const authController = {
     try {
       const userId = req.user.userId;
 
-      // Initialize Supabase client for potential future use
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
       const roleData = await userModel.getUserRoleAndPermissions(userId);
 
       if (!roleData) {
@@ -876,11 +962,8 @@ const authController = {
         return res.status(400).json({ message: 'Email is required' });
       }
 
-      // Initialize Supabase client
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
       // Send password reset email through Supabase
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      const { error } = await supabaseServer.auth.resetPasswordForEmail(email, {
         redirectTo: authController.getFrontendUrl(req, true), // true for password reset
       });
 
@@ -940,11 +1023,8 @@ const authController = {
         return res.status(401).json({ message: 'Authentication required' });
       }
 
-      // Initialize Supabase client
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
-      // Update the password
-      const { error } = await supabase.auth.updateUser({
+      // Update the password using server client
+      const { error } = await supabaseServer.auth.updateUser({
         password: password,
       });
 
@@ -970,42 +1050,69 @@ const authController = {
     }
   },
 
-  // Refresh user token
+  // ENHANCED: Refresh user token with proper Supabase session management
   async refreshToken(req, res) {
     try {
       const { refreshToken } = req.body;
 
       if (!refreshToken) {
-        return res.status(400).json({ message: 'Refresh token is required' });
-      }
-
-      // Initialize Supabase client
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
-      // Refresh the session
-      const { data, error } = await supabase.auth.refreshSession({
-        refresh_token: refreshToken,
-      });
-
-      if (error) {
-        console.error('Token refresh error:', error);
-        return res.status(401).json({
-          message: 'Failed to refresh token',
-          error: error.message,
+        return res.status(400).json({
+          message: 'Refresh token is required',
+          code: 'MISSING_REFRESH_TOKEN',
         });
       }
 
-      if (!data.session) {
-        return res.status(401).json({ message: 'Invalid refresh token' });
+      console.log('🔄 Attempting to refresh token via Supabase');
+
+      // Create a temporary client with the refresh token
+      const tempClient = createClient(supabaseUrl, supabaseKey, {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      });
+
+      // Set the session with the refresh token
+      const { data: sessionData, error: sessionError } =
+        await tempClient.auth.setSession({
+          access_token: '', // Will be refreshed
+          refresh_token: refreshToken,
+        });
+
+      if (sessionError || !sessionData.session) {
+        console.error('Session refresh failed:', sessionError);
+        return res.status(401).json({
+          message: 'Failed to refresh token',
+          error: sessionError?.message || 'Invalid refresh token',
+          code: 'REFRESH_FAILED',
+        });
       }
+
+      // Refresh the session
+      const { data: refreshData, error: refreshError } =
+        await tempClient.auth.refreshSession();
+
+      if (refreshError || !refreshData.session) {
+        console.error('Token refresh failed:', refreshError);
+        return res.status(401).json({
+          message: 'Failed to refresh token',
+          error: refreshError?.message || 'Refresh token expired',
+          code: 'REFRESH_EXPIRED',
+        });
+      }
+
+      console.log('✅ Token refreshed successfully via Supabase');
 
       res.json({
         message: 'Token refreshed successfully',
-        session: data.session,
+        session: refreshData.session,
       });
     } catch (error) {
       console.error('Token refresh error:', error);
-      res.status(500).json({ message: 'Failed to refresh token' });
+      res.status(500).json({
+        message: 'Failed to refresh token',
+        code: 'REFRESH_ERROR',
+      });
     }
   },
 

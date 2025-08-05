@@ -310,6 +310,7 @@ router.post('/reset-password', authController.requestPasswordReset);
  *         description: Server error
  */
 router.post('/update-password', authSupabase, authController.updatePassword);
+router.post('/oauth/callback', authController.handleOAuthCallbackForFrontend);
 
 /**
  * @swagger

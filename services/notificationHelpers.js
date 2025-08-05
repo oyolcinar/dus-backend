@@ -1,9 +1,10 @@
 const notificationService = require('./notificationService');
-const achievementService = require('./achievementService'); // Add this import
+const achievementService = require('./achievementService');
 
 /**
  * Notification Helper Functions
  * These functions provide easy-to-use interfaces for sending specific types of notifications
+ * Updated with full achievement integration and enhanced error handling
  */
 
 class NotificationHelpers {
@@ -55,7 +56,7 @@ class NotificationHelpers {
     }
   }
 
-  // Duel result notification (winner) - ENHANCED with achievement check
+  // UPDATED: Duel result notification (winner) - Enhanced with achievement check
   static async sendDuelWinnerNotification(
     winnerId,
     opponentName,
@@ -76,11 +77,15 @@ class NotificationHelpers {
         },
       );
 
-      // Trigger achievement check after duel completion
+      // Enhanced achievement check after duel completion
       try {
-        await achievementService.triggerAchievementCheck(
-          winnerId,
-          'duel_completed',
+        const newAchievements =
+          await achievementService.triggerAchievementCheck(
+            winnerId,
+            'duel_completed',
+          );
+        console.log(
+          `🏆 User ${winnerId} earned ${newAchievements.length} achievements after duel win`,
         );
       } catch (achievementError) {
         console.error(
@@ -97,7 +102,7 @@ class NotificationHelpers {
     }
   }
 
-  // Duel result notification (loser) - ENHANCED with achievement check
+  // UPDATED: Duel result notification (loser) - Enhanced with achievement check
   static async sendDuelLoserNotification(
     loserId,
     opponentName,
@@ -118,11 +123,15 @@ class NotificationHelpers {
         },
       );
 
-      // Trigger achievement check after duel completion
+      // Enhanced achievement check after duel completion
       try {
-        await achievementService.triggerAchievementCheck(
-          loserId,
-          'duel_completed',
+        const newAchievements =
+          await achievementService.triggerAchievementCheck(
+            loserId,
+            'duel_completed',
+          );
+        console.log(
+          `🏆 User ${loserId} earned ${newAchievements.length} achievements after duel loss`,
         );
       } catch (achievementError) {
         console.error(
@@ -328,10 +337,10 @@ class NotificationHelpers {
     }
   }
 
-  // NEW: Study session completed notification with achievement check
+  // ENHANCED: Study session completed notification with achievement check
   static async handleStudySessionCompleted(userId, sessionData) {
     try {
-      console.log(`Handling study session completion for user ${userId}`);
+      console.log(`🎓 Handling study session completion for user ${userId}`);
 
       // Trigger achievement check after study session
       const newAchievements = await achievementService.triggerAchievementCheck(
@@ -340,7 +349,7 @@ class NotificationHelpers {
       );
 
       console.log(
-        `Found ${newAchievements.length} new achievements for user ${userId}`,
+        `🏆 User ${userId} earned ${newAchievements.length} achievements after study session`,
       );
       return newAchievements;
     } catch (error) {
@@ -349,22 +358,22 @@ class NotificationHelpers {
     }
   }
 
-  // NEW: User registration completed with achievement check
+  // ENHANCED: User registration completed with achievement check
   static async handleUserRegistration(userId) {
     try {
-      console.log(`Handling user registration for user ${userId}`);
+      console.log(`👋 Handling user registration for user ${userId}`);
 
       // Initialize default notification preferences
       await notificationService.initializeDefaultPreferences(userId);
 
-      // Check for registration achievement (should award "Acemi Dusiyer")
+      // Check for registration achievement (should award "Acemi Düşüyer")
       const newAchievements = await achievementService.triggerAchievementCheck(
         userId,
         'user_registered',
       );
 
       console.log(
-        `User ${userId} earned ${newAchievements.length} achievements on registration`,
+        `🏆 User ${userId} earned ${newAchievements.length} achievements on registration`,
       );
       return newAchievements;
     } catch (error) {
@@ -373,14 +382,14 @@ class NotificationHelpers {
     }
   }
 
-  // NEW: Check achievements for all users (for cron job)
+  // ENHANCED: Check achievements for all users (for cron job)
   static async checkAllUsersAchievements() {
     try {
-      console.log('Running achievement check for all users...');
+      console.log('🔍 Running achievement check for all users...');
 
       const results = await achievementService.checkAllUsersAchievements();
 
-      console.log(`Achievement check completed:`, results.summary);
+      console.log('🎯 Achievement check completed:', results.summary);
       return results;
     } catch (error) {
       console.error('Error checking all users achievements:', error);
@@ -388,7 +397,46 @@ class NotificationHelpers {
     }
   }
 
-  // Schedule recurring notifications
+  // NEW: Manual achievement check helper for testing
+  static async triggerManualAchievementCheck(userId) {
+    try {
+      console.log(`🧪 Manual achievement check triggered for user ${userId}`);
+
+      const newAchievements = await achievementService.manualAchievementCheck(
+        userId,
+      );
+
+      if (newAchievements.length > 0) {
+        console.log(
+          `🎉 Manual check resulted in ${newAchievements.length} new achievements for user ${userId}`,
+        );
+      } else {
+        console.log(`📋 No new achievements for user ${userId}`);
+      }
+
+      return newAchievements;
+    } catch (error) {
+      console.error('Error in manual achievement check:', error);
+      throw error;
+    }
+  }
+
+  // NEW: Achievement statistics helper
+  static async getAchievementStatistics() {
+    try {
+      console.log('📊 Getting achievement statistics...');
+
+      const stats = await achievementService.getAchievementStats();
+
+      console.log('📈 Achievement stats retrieved:', stats);
+      return stats;
+    } catch (error) {
+      console.error('Error getting achievement statistics:', error);
+      throw error;
+    }
+  }
+
+  // Enhanced: Schedule recurring notifications with better error handling
   static async scheduleRecurringNotifications() {
     try {
       const { createClient } = require('@supabase/supabase-js');
@@ -433,7 +481,7 @@ class NotificationHelpers {
 
       if (notifications.length > 0) {
         console.log(
-          `Sending ${notifications.length} scheduled study reminders`,
+          `📤 Sending ${notifications.length} scheduled study reminders`,
         );
         return await notificationService.sendBulkNotifications(notifications);
       }
@@ -445,7 +493,7 @@ class NotificationHelpers {
     }
   }
 
-  // Send daily motivation messages
+  // Enhanced: Send daily motivation messages
   static async sendDailyMotivationMessages() {
     try {
       const { createClient } = require('@supabase/supabase-js');
@@ -465,15 +513,15 @@ class NotificationHelpers {
       const notifications = preferences.map((pref) => ({
         userId: pref.user_id,
         notificationType: 'motivational_message',
-        templateName: 'motivational_message',
+        templateName: 'new_motivational_message',
         variables: {
-          message_title: 'Daily Motivation',
+          message_title: 'Günlük Motivasyon',
           message_id: Date.now(),
         },
       }));
 
       if (notifications.length > 0) {
-        console.log(`Sending ${notifications.length} motivational messages`);
+        console.log(`🌟 Sending ${notifications.length} motivational messages`);
         return await notificationService.sendBulkNotifications(notifications);
       }
 
@@ -484,12 +532,16 @@ class NotificationHelpers {
     }
   }
 
-  // Send weekly coaching notes
+  // Enhanced: Send weekly coaching notes
   static async sendWeeklyCoachingNotes() {
     try {
       const { createClient } = require('@supabase/supabase-js');
       const { supabaseUrl, supabaseKey } = require('../config/supabase');
       const supabase = createClient(supabaseUrl, supabaseKey);
+
+      // Get current week number
+      const currentDate = new Date();
+      const weekNumber = Math.ceil(currentDate.getDate() / 7);
 
       // Get users who want coaching notes
       const { data: preferences, error: prefError } = await supabase
@@ -504,15 +556,16 @@ class NotificationHelpers {
       const notifications = preferences.map((pref) => ({
         userId: pref.user_id,
         notificationType: 'coaching_note',
-        templateName: 'coaching_note',
+        templateName: 'new_coaching_note',
         variables: {
-          note_title: 'Weekly Coaching Note',
+          note_title: `Hafta ${weekNumber} Koçluk Notu`,
+          week_number: weekNumber,
           note_id: Date.now(),
         },
       }));
 
       if (notifications.length > 0) {
-        console.log(`Sending ${notifications.length} coaching notes`);
+        console.log(`🏆 Sending ${notifications.length} coaching notes`);
         return await notificationService.sendBulkNotifications(notifications);
       }
 
@@ -523,7 +576,7 @@ class NotificationHelpers {
     }
   }
 
-  // Send study plan reminders for today's activities
+  // Enhanced: Send study plan reminders for today's activities
   static async sendStudyPlanReminders() {
     try {
       const { createClient } = require('@supabase/supabase-js');
@@ -545,13 +598,13 @@ class NotificationHelpers {
         notificationType: 'plan_reminder',
         templateName: 'study_plan_reminder',
         variables: {
-          activity_title: 'Daily Study Activity',
+          activity_title: 'Günlük Çalışma Etkinliği',
           plan_id: Date.now(),
         },
       }));
 
       if (notifications.length > 0) {
-        console.log(`Sending ${notifications.length} study plan reminders`);
+        console.log(`📅 Sending ${notifications.length} study plan reminders`);
         return await notificationService.sendBulkNotifications(notifications);
       }
 
@@ -562,7 +615,7 @@ class NotificationHelpers {
     }
   }
 
-  // Send streak reminders for users with long streaks
+  // Enhanced: Send streak reminders for users with long streaks
   static async sendStreakReminders() {
     try {
       const { createClient } = require('@supabase/supabase-js');
@@ -582,7 +635,7 @@ class NotificationHelpers {
       const notifications = preferences.map((pref) => ({
         userId: pref.user_id,
         notificationType: 'streak_reminder',
-        templateName: 'streak_reminder',
+        templateName: 'streak_warning',
         variables: {
           streak_days: 7,
           streak_type: 'study',
@@ -590,7 +643,7 @@ class NotificationHelpers {
       }));
 
       if (notifications.length > 0) {
-        console.log(`Sending ${notifications.length} streak reminders`);
+        console.log(`🔥 Sending ${notifications.length} streak reminders`);
         return await notificationService.sendBulkNotifications(notifications);
       }
 
@@ -609,7 +662,7 @@ class NotificationHelpers {
         await notificationModel.cleanupOldNotifications(daysOld);
 
       console.log(
-        `Cleaned up ${deletedNotifications.length} old notifications`,
+        `🧹 Cleaned up ${deletedNotifications.length} old notifications`,
       );
       return deletedNotifications;
     } catch (error) {
@@ -628,7 +681,7 @@ class NotificationHelpers {
     }
   }
 
-  // Send system announcement to all users
+  // Enhanced: Send system announcement to all users
   static async sendSystemAnnouncementToAll(
     announcementTitle,
     announcementContent,
@@ -656,6 +709,9 @@ class NotificationHelpers {
         },
       }));
 
+      console.log(
+        `📢 Sending system announcement to ${notifications.length} users`,
+      );
       return await notificationService.sendBulkNotifications(notifications);
     } catch (error) {
       console.error('Error sending system announcement to all users:', error);
@@ -669,6 +725,51 @@ class NotificationHelpers {
       return await notificationService.sendBulkNotifications(notifications);
     } catch (error) {
       console.error('Error sending bulk notifications:', error);
+      throw error;
+    }
+  }
+
+  // NEW: Emergency notification for all users
+  static async sendEmergencyNotification(title, message, targetUsers = 'all') {
+    try {
+      console.log('🚨 Sending emergency notification...');
+
+      if (targetUsers === 'all') {
+        return await this.sendSystemAnnouncementToAll(title, message);
+      } else if (Array.isArray(targetUsers)) {
+        const notifications = targetUsers.map((userId) => ({
+          userId,
+          notificationType: 'system_announcement',
+          templateName: 'system_announcement',
+          variables: {
+            announcement_title: title,
+            announcement_content: message,
+          },
+        }));
+        return await this.sendBulkNotifications(notifications);
+      }
+    } catch (error) {
+      console.error('Error sending emergency notification:', error);
+      throw error;
+    }
+  }
+
+  // NEW: Send test notification for specific user
+  static async sendTestNotification(userId, message = 'Test notification') {
+    try {
+      console.log(`🧪 Sending test notification to user ${userId}`);
+
+      return await notificationService.sendNotification(
+        userId,
+        'system_announcement',
+        'system_announcement',
+        {
+          announcement_title: 'Test Bildirimi',
+          announcement_content: message,
+        },
+      );
+    } catch (error) {
+      console.error('Error sending test notification:', error);
       throw error;
     }
   }

@@ -1,7 +1,8 @@
 const { createClient } = require('@supabase/supabase-js');
 const { supabaseUrl, supabaseKey } = require('../config/supabase');
 const achievementModel = require('../models/achievementModel');
-const NotificationHelpers = require('./notificationHelpers');
+// REMOVED: NotificationHelpers import to fix circular dependency
+// const NotificationHelpers = require('./notificationHelpers');
 
 // Initialize Supabase client
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -40,11 +41,8 @@ class AchievementService {
         if (meetsRequirements) {
           console.log(`User ${userId} earned achievement: ${achievement.name}`);
 
-          // Award achievement with notification
-          await achievementModel.awardToUserWithNotification(
-            userId,
-            achievement.achievement_id,
-          );
+          // UPDATED: Award achievement with notification - USE DIRECT METHOD
+          await this.awardAchievementWithNotification(userId, achievement);
 
           newlyEarned.push(achievement);
         }
@@ -53,6 +51,35 @@ class AchievementService {
       return newlyEarned;
     } catch (error) {
       console.error('Error checking user achievements:', error);
+      throw error;
+    }
+  }
+
+  // NEW: Direct achievement notification method (avoids circular dependency)
+  async awardAchievementWithNotification(userId, achievement) {
+    try {
+      // Award achievement to user first
+      await achievementModel.awardToUser(userId, achievement.achievement_id);
+
+      // Send achievement notification directly using notificationService
+      const notificationService = require('./notificationService');
+
+      await notificationService.sendNotification(
+        userId,
+        'achievement_unlock',
+        'achievement_unlock',
+        {
+          achievement_name: achievement.name,
+          achievement_id: achievement.achievement_id,
+          achievement_description: achievement.description,
+        },
+      );
+
+      console.log(
+        `✅ Achievement "${achievement.name}" awarded to user ${userId} with notification`,
+      );
+    } catch (error) {
+      console.error('Error awarding achievement with notification:', error);
       throw error;
     }
   }
@@ -443,6 +470,72 @@ class AchievementService {
       return progress;
     } catch (error) {
       console.error('Error getting user achievement progress:', error);
+      throw error;
+    }
+  }
+
+  // NEW: Manual achievement check for testing
+  async manualAchievementCheck(userId) {
+    try {
+      console.log(`🧪 Manual achievement check for user ${userId}`);
+
+      const newAchievements = await this.checkUserAchievements(userId);
+
+      console.log(
+        `🎯 Manual check complete: ${newAchievements.length} new achievements`,
+      );
+      return newAchievements;
+    } catch (error) {
+      console.error('Error in manual achievement check:', error);
+      throw error;
+    }
+  }
+
+  // NEW: Get achievement statistics
+  async getAchievementStats() {
+    try {
+      // Get total achievements
+      const { data: allAchievements, error: achievementsError } = await supabase
+        .from('achievements')
+        .select('achievement_id');
+
+      if (achievementsError) throw achievementsError;
+
+      // Get total user achievements
+      const { data: userAchievements, error: userAchievementsError } =
+        await supabase
+          .from('user_achievements')
+          .select('achievement_id, user_id');
+
+      if (userAchievementsError) throw userAchievementsError;
+
+      // Calculate stats
+      const totalAchievements = allAchievements.length;
+      const totalAwarded = userAchievements.length;
+      const uniqueUsersWithAchievements = new Set(
+        userAchievements.map((ua) => ua.user_id),
+      ).size;
+
+      // Achievement distribution
+      const achievementCounts = {};
+      userAchievements.forEach((ua) => {
+        achievementCounts[ua.achievement_id] =
+          (achievementCounts[ua.achievement_id] || 0) + 1;
+      });
+
+      return {
+        total_achievements: totalAchievements,
+        total_awarded: totalAwarded,
+        unique_users_with_achievements: uniqueUsersWithAchievements,
+        average_achievements_per_user:
+          uniqueUsersWithAchievements > 0
+            ? Math.round((totalAwarded / uniqueUsersWithAchievements) * 100) /
+              100
+            : 0,
+        achievement_distribution: achievementCounts,
+      };
+    } catch (error) {
+      console.error('Error getting achievement stats:', error);
       throw error;
     }
   }
