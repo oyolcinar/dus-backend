@@ -840,7 +840,7 @@ router.get('/topics/progress', authSupabase, (req, res) => {
 /**
  * @deprecated Subtopic analytics have been deprecated in favor of course-based analytics
  */
-router.get('/subtopics/*', authSupabase, (req, res) => {
+router.get('/subtopics/:subtopicId', authSupabase, (req, res) => {
   res.status(410).json({
     message: 'Subtopic-based analytics have been deprecated.',
     suggestion:

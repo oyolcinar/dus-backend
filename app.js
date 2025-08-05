@@ -188,112 +188,28 @@ const duelRoutes = require('./routes/duelRoutes');
 const duelResultRoutes = require('./routes/duelResultRoutes');
 const botRoutes = require('./routes/botRoutes');
 
-// TEMPORARY DEBUG VERSION - Replace your route mounting section
-console.log('🚀 Loading routes with error isolation...');
-
-const routesToTest = [
-  { path: '/api/auth', name: 'auth', file: './routes/authRoutes' },
-  { path: '/api/admin', name: 'admin', file: './routes/adminRoutes' },
-  { path: '/api/users', name: 'users', file: './routes/userRoutes' },
-  { path: '/api/tests', name: 'tests', file: './routes/testRoutes' },
-  {
-    path: '/api/questions',
-    name: 'questions',
-    file: './routes/questionRoutes',
-  },
-  { path: '/api/results', name: 'results', file: './routes/resultRoutes' },
-  {
-    path: '/api/achievements',
-    name: 'achievements',
-    file: './routes/achievementRoutes',
-  },
-  { path: '/api/courses', name: 'courses', file: './routes/courseRoutes' },
-  { path: '/api/topics', name: 'topics', file: './routes/topicRoutes' },
-  {
-    path: '/api/subtopics',
-    name: 'subtopics',
-    file: './routes/subtopicRoutes',
-  },
-  { path: '/api/study', name: 'study', file: './routes/studyRoutes' },
-  { path: '/api/coaching', name: 'coaching', file: './routes/coachingRoutes' },
-  {
-    path: '/api/subscriptions',
-    name: 'subscriptions',
-    file: './routes/subscriptionRoutes',
-  },
-  {
-    path: '/api/studyPlans',
-    name: 'studyPlans',
-    file: './routes/studyPlanRoutes',
-  },
-  { path: '/api/friends', name: 'friends', file: './routes/friendRoutes' },
-  { path: '/api/answers', name: 'answers', file: './routes/answerRoutes' },
-  {
-    path: '/api/analytics',
-    name: 'analytics',
-    file: './routes/analyticsRoutes',
-  },
-  {
-    path: '/api/notifications',
-    name: 'notifications',
-    file: './routes/notificationRoutes',
-  },
-  { path: '/api/duels', name: 'duels', file: './routes/duelRoutes' },
-  {
-    path: '/api/duel-results',
-    name: 'duel-results',
-    file: './routes/duelResultRoutes',
-  },
-  { path: '/api/bots', name: 'bots', file: './routes/botRoutes' },
-];
-
-routesToTest.forEach(({ path, name, file }) => {
-  try {
-    console.log(`🔄 Testing ${name} routes...`);
-    const routes = require(file);
-    console.log(`✅ Successfully imported ${name} routes`);
-
-    app.use(path, routes);
-    console.log(`✅ Successfully mounted ${name} routes at ${path}`);
-  } catch (error) {
-    console.error(`❌ ERROR in ${name} routes (${file}):`);
-    console.error(`❌ Error message: ${error.message}`);
-    console.error(`❌ This file contains a malformed route parameter!`);
-
-    if (error.message.includes('Missing parameter name')) {
-      console.error(
-        `❌ Look for routes with patterns like: '/:' or '/:id/:' or '/users/:'`,
-      );
-    }
-
-    process.exit(1);
-  }
-});
-
-console.log('✅ All routes loaded successfully!');
-
 // Mount routes (like in your old app.js)
-// app.use('/api/auth', authRoutes);
-// app.use('/api/admin', adminRoutes);
-// app.use('/api/users', userRoutes);
-// app.use('/api/tests', testRoutes);
-// app.use('/api/questions', questionRoutes);
-// app.use('/api/results', resultRoutes);
-// app.use('/api/achievements', achievementRoutes);
-// app.use('/api/courses', courseRoutes);
-// app.use('/api/topics', topicRoutes);
-// app.use('/api/subtopics', subtopicRoutes);
-// app.use('/api/study', studyRoutes);
-// app.use('/api/coaching', coachingRoutes);
-// app.use('/api/subscriptions', subscriptionRoutes);
-// app.use('/api/studyPlans', studyPlanRoutes);
-// app.use('/api/friends', friendRoutes);
-// app.use('/api/answers', answerRoutes);
-// app.use('/api/analytics', analyticsRoutes);
-// app.use('/api/notifications', notificationRoutes);
-// app.use('/api/duels', duelRoutes);
-// app.use('/api/duel-results', duelResultRoutes);
-// app.use('/api/bots', botRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/tests', testRoutes);
+app.use('/api/questions', questionRoutes);
+app.use('/api/results', resultRoutes);
+app.use('/api/achievements', achievementRoutes);
+app.use('/api/courses', courseRoutes);
+app.use('/api/topics', topicRoutes);
+app.use('/api/subtopics', subtopicRoutes);
+app.use('/api/study', studyRoutes);
+app.use('/api/coaching', coachingRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/studyPlans', studyPlanRoutes);
+app.use('/api/friends', friendRoutes);
+app.use('/api/answers', answerRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/duels', duelRoutes);
+app.use('/api/duel-results', duelResultRoutes);
+app.use('/api/bots', botRoutes);
 
 console.log('✅ All routes loaded successfully using simple approach');
 
