@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const courseController = require('../controllers/courseController');
 // Replace the old auth middleware with the new ones
-const authSupabase = require('../middleware/authSupabase');
+const { authSupabase } = require('../middleware/authSupabase');
 const { authorize, authorizePermission } = require('../middleware/authorize');
 
 /**
@@ -190,11 +190,7 @@ router.delete(
  *       404:
  *         description: Course not found
  */
-router.get(
-  '/:id/progress',
-  authSupabase,
-  courseController.getUserProgress
-);
+router.get('/:id/progress', authSupabase, courseController.getUserProgress);
 
 /**
  * @swagger
@@ -228,7 +224,7 @@ router.get(
 router.post(
   '/subtopic/complete',
   authSupabase,
-  courseController.markSubtopicCompleted
+  courseController.markSubtopicCompleted,
 );
 
 module.exports = router;

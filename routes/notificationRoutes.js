@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const notificationModel = require('../models/notificationModel');
 const notificationService = require('../services/notificationService');
-const authSupabase = require('../middleware/authSupabase');
+const { authSupabase } = require('../middleware/authSupabase');
 
 /**
  * @swagger

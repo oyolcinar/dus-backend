@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController');
 // Replace the old auth middleware with the new one
-const authSupabase = require('../middleware/authSupabase');
+const { authSupabase } = require('../middleware/authSupabase');
 
 /**
  * @swagger
@@ -86,10 +86,7 @@ router.post('/login', userController.login);
  *       401:
  *         description: Unauthorized
  */
-router.get('/profile', 
-  authSupabase, 
-  userController.getProfile
-);
+router.get('/profile', authSupabase, userController.getProfile);
 
 /**
  * @swagger
@@ -114,10 +111,7 @@ router.get('/profile',
  *       401:
  *         description: Unauthorized
  */
-router.get('/search', 
-  authSupabase, 
-  userController.searchUsers
-);
+router.get('/search', authSupabase, userController.searchUsers);
 
 /**
  * @swagger
@@ -135,10 +129,7 @@ router.get('/search',
  *       404:
  *         description: Statistics not found
  */
-router.get('/duel-stats', 
-  authSupabase, 
-  userController.getDuelStats
-);
+router.get('/duel-stats', authSupabase, userController.getDuelStats);
 
 /**
  * @swagger
@@ -168,9 +159,6 @@ router.get('/duel-stats',
  *       401:
  *         description: Unauthorized
  */
-router.post('/study-time', 
-  authSupabase, 
-  userController.updateStudyTime
-);
+router.post('/study-time', authSupabase, userController.updateStudyTime);
 
 module.exports = router;

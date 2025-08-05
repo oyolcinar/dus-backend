@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const coachingController = require('../controllers/coachingController');
 // Replace the old auth middleware with the new ones
-const authSupabase = require('../middleware/authSupabase');
+const { authSupabase } = require('../middleware/authSupabase');
 const { authorize, authorizePermission } = require('../middleware/authorize');
 
 /**

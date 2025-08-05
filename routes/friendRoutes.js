@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const friendController = require('../controllers/friendController');
 // Replace the old auth middleware with the new one
-const authSupabase = require('../middleware/authSupabase');
+const { authSupabase } = require('../middleware/authSupabase');
 
 /**
  * @swagger

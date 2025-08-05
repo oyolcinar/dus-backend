@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const studyController = require('../controllers/studyController');
-const authSupabase = require('../middleware/authSupabase');
+const { authSupabase } = require('../middleware/authSupabase');
 
 /**
  * @swagger

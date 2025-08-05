@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const duelController = require('../controllers/duelController');
-const authSupabase = require('../middleware/authSupabase');
+const { authSupabase } = require('../middleware/authSupabase');
 
 /**
  * @swagger

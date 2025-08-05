@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const resultController = require('../controllers/resultController');
 const authMiddleware = require('../middleware/auth');
-const authSupabase = require('../middleware/authSupabase');
+const { authSupabase } = require('../middleware/authSupabase');
 const { authorize, authorizePermission } = require('../middleware/authorize');
 
 /**
