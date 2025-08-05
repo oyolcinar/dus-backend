@@ -4,7 +4,7 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
-const authSupabase = require('../middleware/authSupabase');
+const { authSupabase } = require('../middleware/authSupabase'); // FIXED: Destructure the middleware
 
 /**
  * @swagger
@@ -146,6 +146,48 @@ router.get('/oauth/:provider', authController.startOAuth);
  *         description: Server error
  */
 router.get('/oauth/callback', authController.oauthCallback);
+
+/**
+ * @swagger
+ * /api/auth/oauth/callback/api:
+ *   post:
+ *     summary: Handle OAuth callback for frontend API integration
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - code
+ *             properties:
+ *               code:
+ *                 type: string
+ *                 description: Authorization code from OAuth provider
+ *     responses:
+ *       200:
+ *         description: OAuth authentication successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 user:
+ *                   type: object
+ *                 session:
+ *                   type: object
+ *       400:
+ *         description: OAuth authentication failed
+ *       500:
+ *         description: Server error
+ */
+router.post(
+  '/oauth/callback/api',
+  authController.handleOAuthCallbackForFrontend,
+); // FIXED: Different path to avoid conflicts
 
 /**
  * @swagger
@@ -310,7 +352,6 @@ router.post('/reset-password', authController.requestPasswordReset);
  *         description: Server error
  */
 router.post('/update-password', authSupabase, authController.updatePassword);
-router.post('/oauth/callback', authController.handleOAuthCallbackForFrontend);
 
 /**
  * @swagger
