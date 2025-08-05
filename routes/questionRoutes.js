@@ -38,7 +38,7 @@ const { authorize, authorizePermission } = require('../middleware/authorize');
  *                 description: The question text
  *               options:
  *                 type: object
- *                 description: Answer options in format {"A": "Option A", "B": "Option B", "C": "Option C", "D": "Option D"}
+ *                 description: 'Answer options in format {"A": "Option A", "B": "Option B", "C": "Option C", "D": "Option D"}'
  *                 example:
  *                   A: "Option A text"
  *                   B: "Option B text"
@@ -73,7 +73,7 @@ const { authorize, authorizePermission } = require('../middleware/authorize');
  *                       type: string
  *                     options:
  *                       type: object
- *                       description: Answer options in format {"A": "Option A", "B": "Option B", ...}
+ *                       description: 'Answer options in format {"A": "Option A", "B": "Option B", ...}'
  *                     correct_answer:
  *                       type: string
  *                     explanation:
@@ -130,7 +130,7 @@ router.post(
  *                       description: The question text
  *                     options:
  *                       type: object
- *                       description: Answer options in format {"A": "Option A", "B": "Option B", ...}
+ *                       description: 'Answer options in format {"A": "Option A", "B": "Option B", ...}'
  *                     correctAnswer:
  *                       type: string
  *                       description: The correct answer key (A, B, C, D, etc.)
@@ -184,7 +184,7 @@ router.post(
  *                     type: string
  *                   options:
  *                     type: object
- *                     description: Answer options in format {"A": "Option A", "B": "Option B", ...}
+ *                     description: 'Answer options in format {"A": "Option A", "B": "Option B", ...}'
  *                   correct_answer:
  *                     type: string
  *                   explanation:
@@ -227,7 +227,7 @@ router.get('/test/:testId', questionController.getByTestId);
  *                   type: string
  *                 options:
  *                   type: object
- *                   description: Answer options in format {"A": "Option A", "B": "Option B", ...}
+ *                   description: 'Answer options in format {"A": "Option A", "B": "Option B", ...}'
  *                 correct_answer:
  *                   type: string
  *                 explanation:
@@ -267,7 +267,7 @@ router.get('/:id', questionController.getById);
  *                 description: The question text
  *               options:
  *                 type: object
- *                 description: Answer options in format {"A": "Option A", "B": "Option B", ...}
+ *                 description: 'Answer options in format {"A": "Option A", "B": "Option B", ...}'
  *               correctAnswer:
  *                 type: string
  *                 description: The correct answer key (A, B, C, D, etc.)
@@ -296,7 +296,7 @@ router.get('/:id', questionController.getById);
  *                       type: string
  *                     options:
  *                       type: object
- *                       description: Answer options in format {"A": "Option A", "B": "Option B", ...}
+ *                       description: 'Answer options in format {"A": "Option A", "B": "Option B", ...}'
  *                     correct_answer:
  *                       type: string
  *                     explanation:
