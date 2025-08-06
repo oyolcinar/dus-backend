@@ -43,6 +43,9 @@ const { authorize, authorizePermission } = require('../middleware/authorize');
  *                 type: string
  *                 enum: [temel_dersler, klinik_dersler]
  *                 default: temel_dersler
+ *               nicknames:
+ *                 type: string
+ *                 description: Alternative names or nicknames for the course
  *     responses:
  *       201:
  *         description: Course created successfully
@@ -104,6 +107,8 @@ router.post(
  *                   image_url:
  *                     type: string
  *                   course_type:
+ *                     type: string
+ *                   nicknames:
  *                     type: string
  */
 router.get('/', courseController.getAll);
@@ -181,6 +186,9 @@ router.get('/:id', courseController.getById);
  *               courseType:
  *                 type: string
  *                 enum: [temel_dersler, klinik_dersler]
+ *               nicknames:
+ *                 type: string
+ *                 description: Alternative names or nicknames for the course
  *     responses:
  *       200:
  *         description: Course updated successfully

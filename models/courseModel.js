@@ -6,7 +6,13 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 const courseModel = {
   // Create a new course
-  async create(title, description, imageUrl, courseType = 'temel_dersler') {
+  async create(
+    title,
+    description,
+    imageUrl,
+    courseType = 'temel_dersler',
+    nicknames = null,
+  ) {
     try {
       const { data, error } = await supabase
         .from('courses')
@@ -15,6 +21,7 @@ const courseModel = {
           description,
           image_url: imageUrl,
           course_type: courseType,
+          nicknames,
         })
         .select()
         .single();
@@ -102,13 +109,14 @@ const courseModel = {
   },
 
   // Update course
-  async update(courseId, title, description, imageUrl, courseType) {
+  async update(courseId, title, description, imageUrl, courseType, nicknames) {
     try {
       const updateData = {};
       if (title !== undefined) updateData.title = title;
       if (description !== undefined) updateData.description = description;
       if (imageUrl !== undefined) updateData.image_url = imageUrl;
       if (courseType !== undefined) updateData.course_type = courseType;
+      if (nicknames !== undefined) updateData.nicknames = nicknames;
 
       const { data, error } = await supabase
         .from('courses')

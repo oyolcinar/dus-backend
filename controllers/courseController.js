@@ -14,7 +14,7 @@ const courseController = {
   // Create a new course
   async create(req, res) {
     try {
-      const { title, description, imageUrl, courseType } = req.body;
+      const { title, description, imageUrl, courseType, nicknames } = req.body;
 
       // Validate input
       if (!title) {
@@ -38,6 +38,7 @@ const courseController = {
         description || null,
         imageUrl || null,
         courseType || 'temel_dersler',
+        nicknames || null,
       );
 
       // Log admin activity
@@ -156,7 +157,7 @@ const courseController = {
   async update(req, res) {
     try {
       const courseId = parseInt(req.params.id);
-      const { title, description, imageUrl, courseType } = req.body;
+      const { title, description, imageUrl, courseType, nicknames } = req.body;
 
       // Check if course exists
       const existingCourse = await courseModel.getById(courseId);
@@ -178,10 +179,11 @@ const courseController = {
       // Update course
       const updatedCourse = await courseModel.update(
         courseId,
-        title || existingCourse.title,
+        title !== undefined ? title : existingCourse.title,
         description !== undefined ? description : existingCourse.description,
         imageUrl !== undefined ? imageUrl : existingCourse.image_url,
-        courseType || existingCourse.course_type,
+        courseType !== undefined ? courseType : existingCourse.course_type,
+        nicknames !== undefined ? nicknames : existingCourse.nicknames,
       );
 
       // Log admin activity
