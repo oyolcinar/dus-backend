@@ -187,6 +187,7 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const duelRoutes = require('./routes/duelRoutes');
 const duelResultRoutes = require('./routes/duelResultRoutes');
 const botRoutes = require('./routes/botRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 
 // Mount routes (like in your old app.js)
 app.use('/api/auth', authRoutes);
@@ -210,6 +211,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/duels', duelRoutes);
 app.use('/api/duel-results', duelResultRoutes);
 app.use('/api/bots', botRoutes);
+app.use('/api/reports', reportRoutes);
 
 console.log('✅ All routes loaded successfully using simple approach');
 
