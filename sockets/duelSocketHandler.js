@@ -1,4 +1,4 @@
-// =================== START: COMPLETE duelSocketHandler.js with SERVER-CONTROLLED TIMING ===================
+// =================== UPDATED duelSocketHandler.js with 30s ROUND RESULT TIMING ===================
 
 const { supabaseUrl, supabaseKey } = require('../config/supabase');
 const { createClient } = require('@supabase/supabase-js');
@@ -661,6 +661,7 @@ async function checkAndProcessRoundResult(duelId, session, io) {
   }
 }
 
+// ✅ UPDATED: processRoundResult with 30s timing from service
 async function processRoundResult(duelId, session, io) {
   try {
     const roomName = `duel_${duelId}`;
@@ -676,6 +677,12 @@ async function processRoundResult(duelId, session, io) {
 
     const isDuelOver = session.currentQuestionIndex >= session.questions.length;
 
+    // ✅ FIXED: Use service constant instead of hardcoded 3000ms
+    const roundDisplayTime = duelSessionService.getRoundResultDisplayTime();
+    console.log(
+      `⏱️ Round results will display for ${roundDisplayTime / 1000} seconds`,
+    );
+
     setTimeout(async () => {
       if (isDuelOver) {
         await completeDuel(duelId, roomName, io);
@@ -685,7 +692,7 @@ async function processRoundResult(duelId, session, io) {
           duel: await duelSessionService.getDuelById(duelId),
         });
       }
-    }, 3000);
+    }, roundDisplayTime); // ✅ NOW USES 30 SECONDS FROM SERVICE
   } catch (error) {
     console.error('Error processing round result:', error);
     io.to(`duel_${duelId}`).emit('room_error', {
@@ -736,4 +743,4 @@ async function completeDuel(duelId, roomName, io) {
 
 module.exports = setupDuelSockets;
 
-// =================== END: COMPLETE duelSocketHandler.js FILE ===================
+// =================== END: UPDATED duelSocketHandler.js with 30s ROUND RESULT TIMING ===================

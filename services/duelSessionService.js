@@ -1,4 +1,4 @@
-// =================== START: COMPLETE duelSessionService.js FILE with 60s timing ===================
+// =================== FIXED duelSessionService.js ===================
 
 const { createClient } = require('@supabase/supabase-js');
 const supabaseConfig = require('../config/supabase');
@@ -10,13 +10,21 @@ const supabase = createClient(
   supabaseConfig.supabaseKey,
 );
 
-// ✅ CONSTANTS: Hard-coded 60 second timing
+// ✅ CONSTANTS: 60 second timing + round result display time
 const QUESTION_TIME_LIMIT = 60000; // 60 seconds in milliseconds
+const ROUND_RESULT_DISPLAY_TIME = 30000; // ✅ NEW: 30 seconds for round results
 
 const duelSessionService = {
+  // ✅ NEW: Get the round result display time constant
+  getRoundResultDisplayTime() {
+    return ROUND_RESULT_DISPLAY_TIME;
+  },
+
   async getDuelById(duelId) {
     return await duelModel.getById(duelId);
   },
+
+  // ... [keeping all existing methods unchanged until updateUserStats] ...
 
   async createSession(duel) {
     try {
@@ -279,7 +287,6 @@ const duelSessionService = {
     }
   },
 
-  // ✅ UPDATED: autoSubmitUnanswered with 60s timing
   async autoSubmitUnanswered(sessionId, questionIndex) {
     try {
       const { data: session, error: sessionError } = await supabase
@@ -325,7 +332,7 @@ const duelSessionService = {
           question_index: questionIndex,
           selected_answer: null,
           is_correct: false,
-          answer_time_ms: QUESTION_TIME_LIMIT, // ✅ NOW 60000ms = 60 seconds
+          answer_time_ms: QUESTION_TIME_LIMIT, // 60 seconds
         }));
 
         console.log(
@@ -344,7 +351,6 @@ const duelSessionService = {
     }
   },
 
-  // ✅ UPDATED: calculateFinalResults with 60s timing
   async calculateFinalResults(sessionId) {
     try {
       const { data: answers, error } = await supabase
@@ -378,7 +384,7 @@ const duelSessionService = {
           userScores[answer.user_id].totalQuestions++;
           if (answer.is_correct) userScores[answer.user_id].correctAnswers++;
           userScores[answer.user_id].totalTime +=
-            answer.answer_time_ms || QUESTION_TIME_LIMIT; // ✅ NOW 60000ms = 60 seconds
+            answer.answer_time_ms || QUESTION_TIME_LIMIT; // 60 seconds
         }
       });
 
@@ -463,39 +469,30 @@ const duelSessionService = {
     }
   },
 
+  // ✅ FIXED: updateUserStats - No more supabase.raw error
   async updateUserStats(userId, won) {
     try {
-      let updateData = {};
-      if (won === true)
-        updateData = {
-          total_duels: supabase.raw('total_duels + 1'),
-          duels_won: supabase.raw('duels_won + 1'),
-          current_losing_streak: 0,
-        };
-      else if (won === false)
-        updateData = {
-          total_duels: supabase.raw('total_duels + 1'),
-          duels_lost: supabase.raw('duels_lost + 1'),
-          current_losing_streak: supabase.raw('current_losing_streak + 1'),
-        };
-      else
-        updateData = {
-          total_duels: supabase.raw('total_duels + 1'),
-          current_losing_streak: 0,
-        };
+      // ✅ SOLUTION 1: Use RPC functions for atomic increments
+      // This requires database functions to be created
+      if (won === true) {
+        // Winner: increment total_duels and duels_won, reset losing streak
+        await supabase.rpc('increment_user_duels_won', { user_id: userId });
+      } else if (won === false) {
+        // Loser: increment total_duels, duels_lost, and losing streak
+        await supabase.rpc('increment_user_duels_lost', { user_id: userId });
+      } else {
+        // Draw: increment total_duels, reset losing streak
+        await supabase.rpc('increment_user_duels_draw', { user_id: userId });
+      }
 
-      const { error } = await supabase
-        .from('users')
-        .update(updateData)
-        .eq('user_id', userId);
-      if (error) throw error;
-
+      // Update longest losing streak if needed
       if (won === false) {
         const { data: user, error: userError } = await supabase
           .from('users')
           .select('current_losing_streak, longest_losing_streak')
           .eq('user_id', userId)
           .single();
+
         if (
           !userError &&
           user.current_losing_streak > user.longest_losing_streak
@@ -508,10 +505,73 @@ const duelSessionService = {
       }
     } catch (error) {
       console.error('Error updating user stats:', error);
+
+      // ✅ FALLBACK: If RPC functions don't exist, use manual approach
+      try {
+        console.log('🔄 RPC failed, using fallback manual stats update...');
+        await this.updateUserStatsManually(userId, won);
+      } catch (fallbackError) {
+        console.error('Error in fallback stats update:', fallbackError);
+      }
+    }
+  },
+
+  // ✅ FALLBACK: Manual stats update without supabase.raw
+  async updateUserStatsManually(userId, won) {
+    try {
+      // Get current stats
+      const { data: currentStats, error: fetchError } = await supabase
+        .from('users')
+        .select(
+          'total_duels, duels_won, duels_lost, current_losing_streak, longest_losing_streak',
+        )
+        .eq('user_id', userId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      let newStats = {
+        total_duels: (currentStats.total_duels || 0) + 1,
+        duels_won: currentStats.duels_won || 0,
+        duels_lost: currentStats.duels_lost || 0,
+        current_losing_streak: currentStats.current_losing_streak || 0,
+        longest_losing_streak: currentStats.longest_losing_streak || 0,
+      };
+
+      if (won === true) {
+        // Winner
+        newStats.duels_won += 1;
+        newStats.current_losing_streak = 0;
+      } else if (won === false) {
+        // Loser
+        newStats.duels_lost += 1;
+        newStats.current_losing_streak += 1;
+
+        // Update longest losing streak if needed
+        if (newStats.current_losing_streak > newStats.longest_losing_streak) {
+          newStats.longest_losing_streak = newStats.current_losing_streak;
+        }
+      } else {
+        // Draw
+        newStats.current_losing_streak = 0;
+      }
+
+      // Update with new stats
+      const { error: updateError } = await supabase
+        .from('users')
+        .update(newStats)
+        .eq('user_id', userId);
+
+      if (updateError) throw updateError;
+
+      console.log(`✅ Manual stats update successful for user ${userId}`);
+    } catch (error) {
+      console.error('Error in manual stats update:', error);
+      throw error;
     }
   },
 };
 
 module.exports = duelSessionService;
 
-// =================== END: COMPLETE duelSessionService.js FILE ===================
+// =================== END: FIXED duelSessionService.js ===================
