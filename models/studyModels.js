@@ -236,13 +236,26 @@ const courseSessionModel = {
     }
   },
 
-  // Add break time to active session
+  // Add break time to active session - FIXED
   async addBreakTime(sessionId, breakDurationSeconds) {
     try {
+      // First get the current break duration
+      const { data: currentSession, error: fetchError } = await supabase
+        .from('user_course_study_sessions')
+        .select('break_duration_seconds')
+        .eq('session_id', sessionId)
+        .eq('session_status', 'active')
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const currentBreakTime = currentSession.break_duration_seconds || 0;
+      const newBreakTime = currentBreakTime + breakDurationSeconds;
+
       const { data, error } = await supabase
         .from('user_course_study_sessions')
         .update({
-          break_duration_seconds: supabase.sql`COALESCE(break_duration_seconds, 0) + ${breakDurationSeconds}`,
+          break_duration_seconds: newBreakTime,
           updated_at: new Date(),
         })
         .eq('session_id', sessionId)
@@ -520,7 +533,7 @@ const courseSessionModel = {
     }
   },
 
-  // Helper: Update course details after session
+  // Helper: Update course details after session - FIXED
   async updateCourseDetailsAfterSession(
     userId,
     courseId,
@@ -528,12 +541,31 @@ const courseSessionModel = {
     breakDurationSeconds,
   ) {
     try {
+      // First get the current values
+      const { data: currentDetails, error: fetchError } = await supabase
+        .from('user_course_details')
+        .select(
+          'total_study_time_seconds, total_break_time_seconds, total_session_count',
+        )
+        .eq('user_id', userId)
+        .eq('course_id', courseId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Calculate new values
+      const newStudyTime =
+        (currentDetails.total_study_time_seconds || 0) + studyDurationSeconds;
+      const newBreakTime =
+        (currentDetails.total_break_time_seconds || 0) + breakDurationSeconds;
+      const newSessionCount = (currentDetails.total_session_count || 0) + 1;
+
       const { error } = await supabase
         .from('user_course_details')
         .update({
-          total_study_time_seconds: supabase.sql`total_study_time_seconds + ${studyDurationSeconds}`,
-          total_break_time_seconds: supabase.sql`total_break_time_seconds + ${breakDurationSeconds}`,
-          total_session_count: supabase.sql`total_session_count + 1`,
+          total_study_time_seconds: newStudyTime,
+          total_break_time_seconds: newBreakTime,
+          total_session_count: newSessionCount,
           last_studied_at: new Date(),
           updated_at: new Date(),
         })
