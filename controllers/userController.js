@@ -27,16 +27,17 @@ const userController = {
       const supabase = createClient(supabaseUrl, supabaseKey);
 
       // Create user in Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true
-      });
+      const { data: authData, error: authError } =
+        await supabase.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true,
+        });
 
       if (authError) {
-        return res.status(400).json({ 
-          message: 'Failed to register with Supabase Auth', 
-          error: authError.message 
+        return res.status(400).json({
+          message: 'Failed to register with Supabase Auth',
+          error: authError.message,
         });
       }
 
@@ -44,7 +45,12 @@ const userController = {
       const authId = authData.user.id;
 
       // Create user in our database with the auth_id
-      const newUser = await userModel.createWithAuthId(username, email, password, authId);
+      const newUser = await userModel.createWithAuthId(
+        username,
+        email,
+        password,
+        authId,
+      );
 
       res.status(201).json({
         message: 'User registered successfully',
@@ -52,8 +58,8 @@ const userController = {
           userId: newUser.user_id,
           username: newUser.username,
           email: newUser.email,
-          subscriptionType: newUser.subscription_type
-        }
+          subscriptionType: newUser.subscription_type,
+        },
       });
     } catch (error) {
       console.error('Registration error:', error);
@@ -78,15 +84,16 @@ const userController = {
       const supabase = createClient(supabaseUrl, supabaseKey);
 
       // Authenticate with Supabase
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
+      const { data: authData, error: authError } =
+        await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
       if (authError) {
-        return res.status(401).json({ 
-          message: 'Invalid credentials', 
-          error: authError.message 
+        return res.status(401).json({
+          message: 'Invalid credentials',
+          error: authError.message,
         });
       }
 
@@ -95,8 +102,8 @@ const userController = {
 
       if (!user) {
         // Special case: User exists in Supabase but not in our database
-        return res.status(404).json({ 
-          message: 'User account not properly set up. Please contact support.' 
+        return res.status(404).json({
+          message: 'User account not properly set up. Please contact support.',
         });
       }
 
@@ -109,7 +116,7 @@ const userController = {
           email: user.email,
           subscriptionType: user.subscription_type,
         },
-        session: authData.session
+        session: authData.session,
       });
     } catch (error) {
       console.error('Login error:', error);
@@ -147,6 +154,7 @@ const userController = {
   },
 
   // Search for users
+  // Search for users
   async searchUsers(req, res) {
     try {
       const { query } = req.query;
@@ -158,7 +166,22 @@ const userController = {
       }
 
       const users = await userModel.searchUsers(query);
-      res.json(users);
+
+      // Map database fields to API format
+      const mappedUsers = users.map((user) => ({
+        id: user.user_id, // ← Map user_id to id
+        userId: user.user_id, // ← Also keep userId for consistency
+        username: user.username,
+        email: user.email,
+        dateRegistered: user.date_registered,
+        totalDuels: user.total_duels || 0,
+        duelsWon: user.duels_won || 0,
+        duelsLost: user.duels_lost || 0,
+        subscriptionType: user.subscription_type || 'free',
+        // Add any other fields you need
+      }));
+
+      res.json(mappedUsers);
     } catch (error) {
       console.error('Search users error:', error);
       res.status(500).json({ message: 'Failed to search users' });
