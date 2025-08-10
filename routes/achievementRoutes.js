@@ -210,6 +210,66 @@ router.get('/user/stats', authSupabase, achievementController.getUserStats);
 
 /**
  * @swagger
+ * /api/achievements/user/course-metrics:
+ *   get:
+ *     summary: Get current user's course study metrics
+ *     tags: [Achievements]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User's course study metrics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 metrics:
+ *                   type: object
+ *                   properties:
+ *                     total_courses_studied:
+ *                       type: integer
+ *                       description: Number of unique courses studied
+ *                     total_courses_completed:
+ *                       type: integer
+ *                       description: Number of courses completed
+ *                     total_course_study_time_seconds:
+ *                       type: integer
+ *                       description: Total study time in seconds
+ *                     total_course_study_time_minutes:
+ *                       type: integer
+ *                       description: Total study time in minutes
+ *                     total_course_sessions:
+ *                       type: integer
+ *                       description: Total number of study sessions
+ *                     courses_by_type:
+ *                       type: object
+ *                       description: Study metrics grouped by course type
+ *                     recent_courses:
+ *                       type: array
+ *                       description: Recently studied courses
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           course_id:
+ *                             type: string
+ *                           course_title:
+ *                             type: string
+ *                           last_studied:
+ *                             type: string
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+  '/user/course-metrics',
+  authSupabase,
+  achievementController.getCourseStudyMetrics,
+);
+
+/**
+ * @swagger
  * /api/achievements/trigger:
  *   post:
  *     summary: Trigger achievement check after specific action
@@ -227,7 +287,7 @@ router.get('/user/stats', authSupabase, achievementController.getUserStats);
  *             properties:
  *               actionType:
  *                 type: string
- *                 enum: [study_session_completed, duel_completed, user_registered]
+ *                 enum: [study_session_completed, duel_completed, user_registered, course_study_session_completed, course_completed]
  *                 description: Type of action that occurred
  *     responses:
  *       200:
@@ -275,8 +335,9 @@ router.post(
  *                         type: integer
  *                       username:
  *                         type: string
- *                       achievement_count:
+ *                       count:
  *                         type: integer
+ *                         description: Number of achievements earned
  */
 router.get('/leaderboard', achievementController.getLeaderboard);
 
