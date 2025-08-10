@@ -849,7 +849,7 @@ const analyticsController = {
   },
 
   // ===============================
-  // COMPREHENSIVE ANALYTICS
+  // COMPREHENSIVE ANALYTICS - FIXED
   // ===============================
 
   // Get all user analytics in one call
@@ -858,7 +858,9 @@ const analyticsController = {
       const userId = req.user.userId;
       const { daysBack = 30, weeksBack = 12 } = req.query;
 
-      // Execute analytics functions in parallel
+      console.log(`🔍 Getting comprehensive analytics for user ${userId}`);
+
+      // Execute analytics functions in parallel - FIXED: Use analyticsController instead of this
       const [
         dashboardResult,
         summaryResult,
@@ -869,39 +871,77 @@ const analyticsController = {
         comparativeResult,
         recentActivityResult,
       ] = await Promise.allSettled([
-        this.getUserDashboardAnalytics(
+        analyticsController.getUserDashboardAnalytics(
           { user: req.user },
           { json: (data) => data },
         ),
-        this.getUserAnalyticsSummary(
+        analyticsController.getUserAnalyticsSummary(
           { user: req.user },
           { json: (data) => data },
         ),
-        this.getUserLongestStreaks(
+        analyticsController.getUserLongestStreaks(
           { user: req.user },
           { json: (data) => data },
         ),
-        this.getUserDailyProgress(
-          { ...req, query: { ...req.query, days: daysBack } },
+        analyticsController.getUserDailyProgress(
+          { user: req.user, query: { ...req.query, days: daysBack } },
           { json: (data) => data },
         ),
-        this.getUserWeeklyProgress(
-          { ...req, query: { ...req.query, weeksBack } },
+        analyticsController.getUserWeeklyProgress(
+          { user: req.user, query: { ...req.query, weeksBack } },
           { json: (data) => data },
         ),
-        this.getUserTopCourses(
-          { ...req, query: { ...req.query, limit: 10 } },
+        analyticsController.getUserTopCourses(
+          { user: req.user, query: { ...req.query, limit: 10 } },
           { json: (data) => data },
         ),
-        this.getUserComparativeAnalytics(
+        analyticsController.getUserComparativeAnalytics(
           { user: req.user },
           { json: (data) => data },
         ),
-        this.getUserRecentActivity(
-          { ...req, query: { ...req.query, daysBack: 7 } },
+        analyticsController.getUserRecentActivity(
+          { user: req.user, query: { ...req.query, daysBack: 7 } },
           { json: (data) => data },
         ),
       ]);
+
+      // Log results for debugging
+      console.log('📊 Analytics results:', {
+        dashboard: dashboardResult.status,
+        summary: summaryResult.status,
+        streaks: streaksResult.status,
+        dailyProgress: dailyProgressResult.status,
+        weeklyProgress: weeklyProgressResult.status,
+        topCourses: topCoursesResult.status,
+        comparative: comparativeResult.status,
+        recentActivity: recentActivityResult.status,
+      });
+
+      // Log any failures for debugging
+      [
+        dashboardResult,
+        summaryResult,
+        streaksResult,
+        dailyProgressResult,
+        weeklyProgressResult,
+        topCoursesResult,
+        comparativeResult,
+        recentActivityResult,
+      ].forEach((result, index) => {
+        if (result.status === 'rejected') {
+          const methodNames = [
+            'dashboard',
+            'summary',
+            'streaks',
+            'dailyProgress',
+            'weeklyProgress',
+            'topCourses',
+            'comparative',
+            'recentActivity',
+          ];
+          console.error(`❌ ${methodNames[index]} failed:`, result.reason);
+        }
+      });
 
       const analytics = {
         dashboard:
@@ -935,15 +975,17 @@ const analyticsController = {
       };
 
       console.log(
-        `User ${userId} (${req.user.email}) accessed comprehensive analytics`,
+        `✅ User ${userId} (${req.user.email}) accessed comprehensive analytics`,
       );
 
       res.json(analytics);
     } catch (error) {
-      console.error('Get all user analytics error:', error);
-      res
-        .status(500)
-        .json({ message: 'Failed to retrieve comprehensive analytics' });
+      console.error('❌ Get all user analytics error:', error);
+      res.status(500).json({
+        message: 'Failed to retrieve comprehensive analytics',
+        error: error.message,
+        timestamp: new Date().toISOString(),
+      });
     }
   },
 
@@ -1058,10 +1100,10 @@ const analyticsController = {
     }
   },
 
-  // Enhanced alias methods for backward compatibility
+  // Enhanced alias methods for backward compatibility - FIXED
   async getLongestStreaksAnalytics(req, res) {
     try {
-      await this.getUserLongestStreaks(req, {
+      await analyticsController.getUserLongestStreaks(req, {
         json: (data) => res.json({ streaksAnalytics: data.streaks }),
       });
     } catch (error) {
@@ -1072,7 +1114,7 @@ const analyticsController = {
 
   async getDailyProgressAnalytics(req, res) {
     try {
-      await this.getUserDailyProgress(req, {
+      await analyticsController.getUserDailyProgress(req, {
         json: (data) =>
           res.json({ dailyProgressAnalytics: data.dailyProgress }),
       });
@@ -1086,7 +1128,7 @@ const analyticsController = {
 
   async getWeeklyProgressAnalytics(req, res) {
     try {
-      await this.getUserWeeklyProgress(req, {
+      await analyticsController.getUserWeeklyProgress(req, {
         json: (data) =>
           res.json({ weeklyProgressAnalytics: data.weeklyProgress }),
       });
@@ -1100,7 +1142,7 @@ const analyticsController = {
 
   async getMostTimeSpentCourseAnalytics(req, res) {
     try {
-      await this.getUserTopCourses(req, {
+      await analyticsController.getUserTopCourses(req, {
         json: (data) => res.json({ courseAnalytics: data.topCourses }),
       });
     } catch (error) {
