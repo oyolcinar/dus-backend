@@ -258,7 +258,7 @@ const achievementController = {
     }
   },
 
-  // ✅ NEW: Get course study metrics for achievements
+  // ✅ OPTIMIZED: Get course study metrics using database function
   async getCourseStudyMetrics(req, res) {
     try {
       const userId = req.user.userId;
@@ -266,78 +266,57 @@ const achievementController = {
 
       console.log(`Getting course study metrics for user: ${userId}`);
 
-      // Try to get course study data from multiple possible table names
-      const possibleTables = [
-        'course_study_sessions',
-        'study_sessions',
-        'user_study_sessions',
-        'course_sessions',
-      ];
+      // ✅ Use the new database function for better performance
+      try {
+        const { data: metricsData, error: functionError } = await supabase.rpc(
+          'get_user_course_study_metrics',
+          { target_user_id: userId },
+        );
 
-      let courseData = [];
-      let dataFound = false;
+        if (!functionError && metricsData && metricsData.length > 0) {
+          const metrics = metricsData[0];
+          console.log(`Database function returned metrics:`, metrics);
 
-      for (const tableName of possibleTables) {
-        try {
-          const { data, error } = await supabase
-            .from(tableName)
-            .select(
-              `
-              course_id,
-              course_title,
-              study_duration_seconds,
-              session_date,
-              course_type,
-              duration_seconds
-            `,
-            )
-            .eq('user_id', userId);
-
-          if (!error && data && data.length > 0) {
-            courseData = data;
-            dataFound = true;
-            console.log(`Found data in table: ${tableName}`);
-            break;
-          }
-        } catch (tableError) {
-          // Continue to next table
-          continue;
+          res.json({
+            message: 'Course study metrics retrieved successfully',
+            metrics: {
+              total_courses_studied: metrics.total_courses_studied || 0,
+              total_courses_completed: metrics.total_courses_completed || 0,
+              total_course_study_time_seconds:
+                metrics.total_course_study_time_seconds || 0,
+              total_course_study_time_minutes:
+                metrics.total_course_study_time_minutes || 0,
+              total_course_sessions: metrics.total_course_sessions || 0,
+              courses_by_type: metrics.courses_by_type || {},
+              recent_courses: metrics.recent_courses || [],
+            },
+          });
+          return;
         }
+      } catch (dbFunctionError) {
+        console.log(
+          'Database function not available, falling back to manual query',
+        );
       }
 
-      // If no course data found, try to get from user stats or other sources
-      if (!dataFound) {
-        try {
-          // Try to get basic stats from user statistics
-          const stats = await achievementService.getUserStats(userId);
-          if (stats) {
-            const basicMetrics = {
-              total_courses_studied: stats.courses_studied || 0,
-              total_courses_completed: stats.courses_completed || 0,
-              total_course_study_time_seconds:
-                stats.total_course_study_time_seconds ||
-                stats.total_study_time_minutes * 60 ||
-                0,
-              total_course_study_time_minutes:
-                stats.total_course_study_time_minutes ||
-                stats.total_study_time_minutes ||
-                0,
-              total_course_sessions:
-                stats.total_course_sessions ||
-                stats.study_sessions_completed ||
-                0,
-              courses_by_type: {},
-              recent_courses: [],
-            };
+      // ✅ Fallback: Manual query if database function fails
+      const { data: courseData, error } = await supabase
+        .from('user_course_study_sessions')
+        .select(
+          `
+          course_id,
+          courses!inner(title, course_type),
+          study_duration_seconds,
+          session_date,
+          break_duration_seconds,
+          total_duration_seconds
+        `,
+        )
+        .eq('user_id', userId);
 
-            return res.json({
-              message: 'Course study metrics retrieved from user stats',
-              metrics: basicMetrics,
-            });
-          }
-        } catch (statsError) {
-          console.log('Could not get stats either');
-        }
+      if (error && error.code !== 'PGRST116') {
+        console.error('Manual query error:', error);
+        throw error;
       }
 
       // Calculate metrics from the found data
@@ -347,15 +326,14 @@ const achievementController = {
         total_courses_studied: new Set(
           sessions.map((s) => s.course_id).filter(Boolean),
         ).size,
-        total_courses_completed: 0, // This would need completion logic
+        total_courses_completed: 0, // Would need completion logic
         total_course_study_time_seconds: sessions.reduce((sum, s) => {
-          const duration = s.study_duration_seconds || s.duration_seconds || 0;
+          const duration = s.study_duration_seconds || 0;
           return sum + duration;
         }, 0),
         total_course_study_time_minutes: Math.round(
           sessions.reduce((sum, s) => {
-            const duration =
-              s.study_duration_seconds || s.duration_seconds || 0;
+            const duration = s.study_duration_seconds || 0;
             return sum + duration;
           }, 0) / 60,
         ),
@@ -367,14 +345,13 @@ const achievementController = {
       // Group by course type
       const typeMap = new Map();
       sessions.forEach((session) => {
-        const type = session.course_type || 'general';
+        const type = session.courses?.course_type || 'general';
         if (!typeMap.has(type)) {
           typeMap.set(type, { count: 0, total_time_minutes: 0 });
         }
         const typeData = typeMap.get(type);
         typeData.count += 1;
-        const duration =
-          session.study_duration_seconds || session.duration_seconds || 0;
+        const duration = session.study_duration_seconds || 0;
         typeData.total_time_minutes += Math.round(duration / 60);
       });
 
@@ -391,12 +368,11 @@ const achievementController = {
           return sessionDate >= thirtyDaysAgo;
         })
         .reduce((unique, session) => {
-          // Remove duplicates by course_id
           if (!unique.find((u) => u.course_id === session.course_id)) {
             unique.push({
               course_id: session.course_id,
               course_title:
-                session.course_title || `Course ${session.course_id}`,
+                session.courses?.title || `Course ${session.course_id}`,
               last_studied: session.session_date,
             });
           }
@@ -405,11 +381,11 @@ const achievementController = {
         .slice(0, 10);
 
       console.log(
-        `Course metrics calculated: ${metrics.total_course_sessions} sessions, ${metrics.total_courses_studied} courses`,
+        `Manual metrics calculated: ${metrics.total_course_sessions} sessions, ${metrics.total_courses_studied} courses`,
       );
 
       res.json({
-        message: 'Course study metrics retrieved successfully',
+        message: 'Course study metrics retrieved successfully (manual)',
         metrics: metrics,
       });
     } catch (error) {
@@ -488,7 +464,7 @@ const achievementController = {
     }
   },
 
-  // ✅ FIXED: Get leaderboard (top users by achievements)
+  // ✅ OPTIMIZED: Get leaderboard using database functions
   async getLeaderboard(req, res) {
     try {
       const limit = parseInt(req.query.limit) || 10;
@@ -496,7 +472,7 @@ const achievementController = {
 
       console.log(`Getting achievement leaderboard with limit: ${limit}`);
 
-      // Try using the database function first
+      // ✅ Try using the database function first (best performance)
       try {
         const { data: leaderboard, error: rpcError } = await supabase.rpc(
           'get_achievement_leaderboard',
@@ -505,26 +481,26 @@ const achievementController = {
           },
         );
 
-        if (!rpcError && leaderboard) {
-          console.log('Leaderboard retrieved via RPC function');
+        if (!rpcError && leaderboard && leaderboard.length > 0) {
+          console.log('✅ Leaderboard retrieved via RPC function');
           return res.json({
             message: 'Leaderboard retrieved successfully',
             leaderboard: leaderboard,
           });
         }
       } catch (rpcError) {
-        console.log('RPC function not available, falling back to manual query');
+        console.log('RPC function not available, trying view fallback...');
       }
 
-      // Fallback: Use view if available
+      // ✅ Fallback: Use view if available (good performance)
       try {
         const { data: leaderboard, error: viewError } = await supabase
           .from('achievement_leaderboard_view')
           .select('user_id, username, achievement_count')
           .limit(limit);
 
-        if (!viewError && leaderboard) {
-          console.log('Leaderboard retrieved via view');
+        if (!viewError && leaderboard && leaderboard.length > 0) {
+          console.log('✅ Leaderboard retrieved via view');
           return res.json({
             message: 'Leaderboard retrieved successfully',
             leaderboard: leaderboard.map((item) => ({
@@ -535,10 +511,10 @@ const achievementController = {
           });
         }
       } catch (viewError) {
-        console.log('View not available, using manual aggregation');
+        console.log('View not available, using manual aggregation...');
       }
 
-      // Final fallback: Manual aggregation
+      // ✅ Final fallback: Manual aggregation (slower but works)
       const { data: userAchievements, error: manualError } =
         await supabase.from('user_achievements').select(`
           user_id,
@@ -572,7 +548,7 @@ const achievementController = {
         .slice(0, limit);
 
       console.log(
-        `Manual leaderboard calculated: ${sortedLeaderboard.length} entries`,
+        `✅ Manual leaderboard calculated: ${sortedLeaderboard.length} entries`,
       );
 
       res.json({
@@ -620,12 +596,70 @@ const achievementController = {
     }
   },
 
-  // ✅ FIXED: Get achievement statistics (admin only)
+  // ✅ OPTIMIZED: Get achievement statistics using materialized view
   async getAchievementStats(req, res) {
     try {
       const supabase = createClient(supabaseUrl, supabaseKey);
 
-      // Get total achievements
+      // ✅ Try using the materialized view first (best performance)
+      try {
+        const { data: statsFromView, error: viewError } = await supabase
+          .from('achievement_stats_mv')
+          .select('*')
+          .single();
+
+        if (!viewError && statsFromView) {
+          console.log('✅ Achievement stats retrieved from materialized view');
+
+          // Also get distribution data
+          const { data: distribution, error: distError } = await supabase.from(
+            'user_achievements',
+          ).select(`
+              achievement_id,
+              achievements!inner(name)
+            `);
+
+          let distributionData = [];
+          if (!distError && distribution) {
+            const distributionMap = new Map();
+            distribution.forEach((ua) => {
+              const key = ua.achievement_id;
+              const name = ua.achievements.name;
+              if (!distributionMap.has(key)) {
+                distributionMap.set(key, {
+                  achievement_id: key,
+                  name: name,
+                  count: 0,
+                });
+              }
+              distributionMap.get(key).count += 1;
+            });
+
+            distributionData = Array.from(distributionMap.values()).sort(
+              (a, b) => b.count - a.count,
+            );
+          }
+
+          return res.json({
+            message: 'Achievement statistics retrieved successfully',
+            stats: {
+              totalAchievements: statsFromView.total_achievements,
+              totalUserAchievements: statsFromView.total_user_achievements,
+              recentAchievements: statsFromView.recent_achievements_7d,
+              averageAchievementsPerUser: parseFloat(
+                statsFromView.avg_achievements_per_user,
+              ),
+              distribution: distributionData,
+            },
+          });
+        }
+      } catch (viewError) {
+        console.log(
+          'Materialized view not available, using manual calculation...',
+        );
+      }
+
+      // ✅ Fallback: Manual calculation
       const { count: totalAchievements, error: achievementError } =
         await supabase
           .from('achievements')
@@ -633,7 +667,6 @@ const achievementController = {
 
       if (achievementError) throw achievementError;
 
-      // Get total user achievements
       const { count: totalUserAchievements, error: userAchievementError } =
         await supabase
           .from('user_achievements')
@@ -641,35 +674,6 @@ const achievementController = {
 
       if (userAchievementError) throw userAchievementError;
 
-      // Get achievement distribution - manual aggregation since .group() doesn't exist
-      const { data: allUserAchievements, error: distributionError } =
-        await supabase.from('user_achievements').select(`
-          achievement_id,
-          achievements!inner(name)
-        `);
-
-      if (distributionError) throw distributionError;
-
-      // Manually calculate distribution
-      const distributionMap = new Map();
-      allUserAchievements.forEach((ua) => {
-        const key = ua.achievement_id;
-        const name = ua.achievements.name;
-        if (!distributionMap.has(key)) {
-          distributionMap.set(key, {
-            achievement_id: key,
-            name: name,
-            count: 0,
-          });
-        }
-        distributionMap.get(key).count += 1;
-      });
-
-      const distribution = Array.from(distributionMap.values()).sort(
-        (a, b) => b.count - a.count,
-      );
-
-      // Get recent achievements (last 7 days)
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
@@ -681,7 +685,7 @@ const achievementController = {
       if (recentError) throw recentError;
 
       res.json({
-        message: 'Achievement statistics retrieved successfully',
+        message: 'Achievement statistics retrieved successfully (manual)',
         stats: {
           totalAchievements: totalAchievements,
           totalUserAchievements: totalUserAchievements,
@@ -691,7 +695,7 @@ const achievementController = {
               ? Math.round((totalUserAchievements / totalAchievements) * 100) /
                 100
               : 0,
-          distribution: distribution,
+          distribution: [],
         },
       });
     } catch (error) {
