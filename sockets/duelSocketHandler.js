@@ -1,4 +1,4 @@
-// =================== UPDATED duelSocketHandler.js with 30s ROUND RESULT TIMING ===================
+// =================== FIXED duelSocketHandler.js - IMMEDIATE ROUND RESULTS ===================
 
 const { supabaseUrl, supabaseKey } = require('../config/supabase');
 const { createClient } = require('@supabase/supabase-js');
@@ -12,10 +12,10 @@ const activeSessions = new Map();
 const userSockets = new Map();
 const botSessions = new Map(); // duelId -> bot session info
 
-// ✅ NEW: Track active question timers for server-controlled timing
+// Track active question timers for server-controlled timing
 const activeQuestionTimers = new Map(); // duelId -> timer info
 
-// ✅ CONSTANTS: Hard-coded 60 second timing
+// CONSTANTS: Hard-coded 60 second timing
 const QUESTION_TIME_LIMIT = 60000; // 60 seconds in milliseconds
 const BOT_MIN_THINKING_TIME = 3000; // 3 seconds minimum
 const BOT_MAX_THINKING_TIME = 57000; // 57 seconds maximum (3 second buffer)
@@ -45,7 +45,7 @@ const setupDuelSockets = (io) => {
       socket.role = dbUser.role;
       next();
     } catch (error) {
-      console.error('🔧 Socket Auth: Unexpected error:', error);
+      console.error('Socket Auth: Unexpected error:', error);
       return next(new Error('Authentication error: Unexpected error'));
     }
   });
@@ -185,8 +185,15 @@ const setupDuelSockets = (io) => {
         if (!session || session.status !== 'active') return;
 
         console.log(
-          `📝 User ${socket.username} submitted answer for question ${questionId} at index ${session.currentQuestionIndex}`,
+          `BACKEND: Answer submitted by user ${socket.userId} for duel ${duelId}`,
         );
+        console.log(
+          `BACKEND: Question ${questionId} at index ${session.currentQuestionIndex}`,
+        );
+        console.log(
+          `BACKEND: Processing lock status: ${session.processingLock}`,
+        );
+
         await duelSessionService.submitAnswer(
           session.sessionId,
           socket.userId,
@@ -202,10 +209,15 @@ const setupDuelSockets = (io) => {
           username: socket.username,
         });
 
-        // ALWAYS check if both answered after any submission
-        await checkAndProcessRoundResult(duelId, session, io);
+        console.log(
+          `BACKEND: About to check round completion for duel ${duelId}`,
+        );
+        await checkAndProcessRoundResultEnhanced(duelId, session, io);
+        console.log(
+          `BACKEND: Round completion check finished for duel ${duelId}`,
+        );
       } catch (error) {
-        console.error('Error in submit_answer handler:', error);
+        console.error('BACKEND ERROR in submit_answer handler:', error);
         socket.emit('answer_error', { message: 'Failed to submit answer' });
       }
     });
@@ -226,7 +238,7 @@ const setupDuelSockets = (io) => {
         if (courseId) {
           // NEW: Course-based bot challenge
           console.log(
-            `🤖 Creating course-based bot challenge: courseId=${courseId}, difficulty=${difficulty}`,
+            `Creating course-based bot challenge: courseId=${courseId}, difficulty=${difficulty}`,
           );
           botDuel = await botService.createBotDuelWithCourse(
             socket.userId,
@@ -236,7 +248,7 @@ const setupDuelSockets = (io) => {
         } else {
           // Legacy: Test-based bot challenge
           console.log(
-            `🤖 Creating test-based bot challenge: testId=${testId}, difficulty=${difficulty}`,
+            `Creating test-based bot challenge: testId=${testId}, difficulty=${difficulty}`,
           );
           botDuel = await botService.createBotDuelLegacy(
             socket.userId,
@@ -272,7 +284,7 @@ const setupDuelSockets = (io) => {
         }
 
         console.log(
-          `🤖 Course-based bot challenge: courseId=${courseId}, difficulty=${difficulty}`,
+          `Course-based bot challenge: courseId=${courseId}, difficulty=${difficulty}`,
         );
 
         const botDuel = await botService.createBotDuelWithCourse(
@@ -309,7 +321,7 @@ const setupDuelSockets = (io) => {
             username: socket.username,
           });
 
-          // ✅ NEW: Clean up timers when user disconnects
+          // Clean up timers when user disconnects
           if (session.connectedUsers.size === 0) {
             cleanupDuelTimers(duelId);
             setTimeout(() => activeSessions.delete(duelId), 30000);
@@ -323,11 +335,11 @@ const setupDuelSockets = (io) => {
 
 async function startDuelSession(duelId, roomName, io) {
   try {
-    console.log(`🎮 Starting duel session ${duelId}...`);
+    console.log(`Starting duel session ${duelId}...`);
 
     const session = activeSessions.get(duelId);
     if (!session) {
-      console.error(`❌ Session not found for duel ${duelId}`);
+      console.error(`Session not found for duel ${duelId}`);
       io.to(roomName).emit('room_error', {
         message: 'Duel session not found',
         code: 'SESSION_NOT_FOUND',
@@ -342,7 +354,7 @@ async function startDuelSession(duelId, roomName, io) {
 
     // ENHANCED: Try to get questions with detailed error handling
     try {
-      console.log(`📚 Fetching questions for duel ${duelId}...`);
+      console.log(`Fetching questions for duel ${duelId}...`);
       session.questions = await duelSessionService.getQuestionsForDuel(duelId);
 
       if (!session.questions || session.questions.length === 0) {
@@ -350,11 +362,11 @@ async function startDuelSession(duelId, roomName, io) {
       }
 
       console.log(
-        `✅ Successfully loaded ${session.questions.length} questions for duel ${duelId}`,
+        `Successfully loaded ${session.questions.length} questions for duel ${duelId}`,
       );
     } catch (questionError) {
       console.error(
-        `❌ Failed to get questions for duel ${duelId}:`,
+        `Failed to get questions for duel ${duelId}:`,
         questionError,
       );
 
@@ -371,10 +383,10 @@ async function startDuelSession(duelId, roomName, io) {
     const duel = await duelSessionService.getDuelById(duelId);
     const isOpponentBot = await botService.isBot(duel.opponent_id);
 
-    console.log(`🚀 Presenting first question for duel ${duelId}`);
+    console.log(`Presenting first question for duel ${duelId}`);
     await presentNextQuestion(duelId, roomName, io, { isOpponentBot, duel });
   } catch (error) {
-    console.error(`💥 Critical error starting duel session ${duelId}:`, error);
+    console.error(`Critical error starting duel session ${duelId}:`, error);
     io.to(roomName).emit('room_error', {
       message: 'Düello başlatılırken kritik hata oluştu',
       code: 'CRITICAL_START_ERROR',
@@ -382,13 +394,12 @@ async function startDuelSession(duelId, roomName, io) {
   }
 }
 
-// ✅ COMPLETELY REWRITTEN: presentNextQuestion with server-controlled timing
 async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
   try {
     const session = activeSessions.get(duelId);
     if (!session) {
       console.error(
-        `❌ Session not found when presenting question for duel ${duelId}`,
+        `Session not found when presenting question for duel ${duelId}`,
       );
       io.to(roomName).emit('room_error', {
         message: 'Duel session lost',
@@ -399,14 +410,14 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
 
     // Check if duel should be completed
     if (session.currentQuestionIndex >= session.questions.length) {
-      console.log(`🏁 All questions completed for duel ${duelId}`);
+      console.log(`All questions completed for duel ${duelId}`);
       return await completeDuel(duelId, roomName, io);
     }
 
     const currentQuestion = session.questions[session.currentQuestionIndex];
     if (!currentQuestion) {
       console.error(
-        `❌ Question not found at index ${session.currentQuestionIndex} for duel ${duelId}`,
+        `Question not found at index ${session.currentQuestionIndex} for duel ${duelId}`,
       );
       io.to(roomName).emit('room_error', {
         message: 'Soru bulunamadı',
@@ -422,7 +433,7 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
       !currentQuestion.options
     ) {
       console.error(
-        `❌ Invalid question structure for duel ${duelId}:`,
+        `Invalid question structure for duel ${duelId}:`,
         currentQuestion,
       );
       io.to(roomName).emit('room_error', {
@@ -437,12 +448,12 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
     activeSessions.set(duelId, session);
 
     console.log(
-      `📝 Presenting question ${session.currentQuestionIndex + 1}/${
+      `Presenting question ${session.currentQuestionIndex + 1}/${
         session.questions.length
       } for duel ${duelId}`,
     );
 
-    // ✅ NEW: Server-controlled timing starts here
+    // Server-controlled timing starts here
     const questionStartTime = Date.now();
     const timeLimit = QUESTION_TIME_LIMIT; // 60 seconds
 
@@ -454,7 +465,7 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
       endTime: questionStartTime + timeLimit,
     });
 
-    // ✅ SEND THE QUESTION WITH SERVER TIMESTAMP
+    // SEND THE QUESTION WITH SERVER TIMESTAMP
     io.to(roomName).emit('question_presented', {
       questionIndex: session.currentQuestionIndex,
       totalQuestions: session.questions.length,
@@ -469,12 +480,12 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
     });
 
     console.log(
-      `✅ Question ${
+      `Question ${
         session.currentQuestionIndex + 1
       } sent to room ${roomName} with 60s server-controlled timing`,
     );
 
-    // ✅ NEW: Start server-side timer broadcasts
+    // Start server-side timer broadcasts
     startServerTimerBroadcast(duelId, roomName, io, timeLimit);
 
     // Handle bot answer if needed
@@ -488,7 +499,7 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
       );
     }
 
-    // ✅ ENHANCED: Server-controlled auto-submit with exact 60s timing
+    // CRITICAL: Server-controlled auto-submit with exact 60s timing
     setTimeout(async () => {
       const currentSession = activeSessions.get(duelId);
       const timerInfo = activeQuestionTimers.get(duelId);
@@ -500,7 +511,7 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
         !currentSession.processingLock
       ) {
         console.log(
-          `⏰ 60s timeout for question ${
+          `BACKEND: 60s timeout for question ${
             session.currentQuestionIndex + 1
           } in duel ${duelId}`,
         );
@@ -515,14 +526,14 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
           session.sessionId,
           session.currentQuestionIndex,
         );
-        await checkAndProcessRoundResult(duelId, currentSession, io);
+        await checkAndProcessRoundResultEnhanced(duelId, currentSession, io);
 
         // Clean up timer
         activeQuestionTimers.delete(duelId);
       }
     }, timeLimit); // 60000ms = 60 seconds
   } catch (error) {
-    console.error(`💥 Error presenting question for duel ${duelId}:`, error);
+    console.error(`Error presenting question for duel ${duelId}:`, error);
     io.to(roomName).emit('room_error', {
       message: 'Soru sunulurken hata oluştu',
       code: 'QUESTION_PRESENT_ERROR',
@@ -530,7 +541,7 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
   }
 }
 
-// ✅ NEW: Server-side timer broadcast function
+// Server-side timer broadcast function
 function startServerTimerBroadcast(duelId, roomName, io, timeLimit) {
   const timerInfo = activeQuestionTimers.get(duelId);
   if (!timerInfo) return;
@@ -561,7 +572,7 @@ function startServerTimerBroadcast(duelId, roomName, io, timeLimit) {
   }
 }
 
-// ✅ NEW: Cleanup function to clear timers
+// Cleanup function to clear timers
 function cleanupDuelTimers(duelId) {
   const timerInfo = activeQuestionTimers.get(duelId);
   if (timerInfo && timerInfo.broadcastInterval) {
@@ -570,7 +581,7 @@ function cleanupDuelTimers(duelId) {
   activeQuestionTimers.delete(duelId);
 }
 
-// ✅ UPDATED: Enhanced bot answer with 60s timing
+// Enhanced bot answer with 60s timing
 async function handleBotAnswer(
   duelId,
   botUserId,
@@ -587,7 +598,9 @@ async function handleBotAnswer(
     const botInfo = await botService.getBotInfo(botUserId);
     const botName = botInfo?.botName || 'Dr. Bot';
 
-    console.log(`🤖 Bot ${botName} will answer in ${botAnswer.thinkingTime}ms`);
+    console.log(
+      `BACKEND: Bot ${botName} will answer in ${botAnswer.thinkingTime}ms`,
+    );
 
     setTimeout(async () => {
       try {
@@ -597,6 +610,9 @@ async function handleBotAnswer(
           !currentSession ||
           currentSession.currentQuestionIndex !== session.currentQuestionIndex
         ) {
+          console.log(
+            `BACKEND: Bot answer cancelled - session changed for duel ${duelId}`,
+          );
           return;
         }
 
@@ -605,8 +621,9 @@ async function handleBotAnswer(
           username: botName,
           isBot: true,
         });
+
         console.log(
-          `🤖 Bot ${botName} answering question index ${currentSession.currentQuestionIndex}`,
+          `BACKEND: Bot ${botName} answering question index ${currentSession.currentQuestionIndex}`,
         );
 
         await duelSessionService.submitAnswer(
@@ -618,42 +635,89 @@ async function handleBotAnswer(
           botAnswer.timeTaken,
         );
 
-        // ALWAYS check if the round is complete after the bot answers
-        await checkAndProcessRoundResult(duelId, currentSession, io);
+        console.log(
+          `BACKEND: Bot answer submitted, checking round completion...`,
+        );
+        await checkAndProcessRoundResultEnhanced(duelId, currentSession, io);
       } catch (error) {
-        console.error('Error in bot answer callback:', error);
+        console.error('BACKEND ERROR in bot answer callback:', error);
       }
     }, botAnswer.thinkingTime);
   } catch (error) {
-    console.error('Error handling bot answer:', error);
+    console.error('BACKEND ERROR handling bot answer:', error);
   }
 }
 
-async function checkAndProcessRoundResult(duelId, session, io) {
+// FIXED: Enhanced round result checking with retry logic
+async function checkAndProcessRoundResultEnhanced(
+  duelId,
+  session,
+  io,
+  maxRetries = 3,
+) {
   try {
-    // If it's already locked, another process is handling it. Exit.
+    // Prevent multiple concurrent processing attempts
     if (session.processingLock) {
+      console.log(
+        `BACKEND: Round already being processed for duel ${duelId}, skipping...`,
+      );
       return;
     }
 
-    const bothHaveAnswered = await duelSessionService.checkBothAnswered(
-      session.sessionId,
-      session.currentQuestionIndex,
+    console.log(
+      `BACKEND: Checking round completion for duel ${duelId}, question ${session.currentQuestionIndex}`,
     );
 
-    if (bothHaveAnswered) {
-      // LOCK IT. Only one process can enter this block per question.
-      session.processingLock = true;
-      activeSessions.set(duelId, session);
+    // Enhanced check with retry logic for database consistency
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      console.log(
+        `BACKEND: Round completion check attempt ${attempt}/${maxRetries} for duel ${duelId}`,
+      );
+
+      const bothAnswered = await duelSessionService.checkBothAnswered(
+        session.sessionId,
+        session.currentQuestionIndex,
+      );
 
       console.log(
-        `🎯 Both players answered for duel ${duelId}, processing results...`,
+        `BACKEND: Both answered result (attempt ${attempt}): ${bothAnswered}`,
       );
-      await processRoundResult(duelId, session, io);
+
+      if (bothAnswered) {
+        // CRITICAL: Lock to prevent duplicate processing
+        session.processingLock = true;
+        activeSessions.set(duelId, session);
+
+        console.log(
+          `BACKEND: Both players answered question ${session.currentQuestionIndex} for duel ${duelId} - PROCEEDING IMMEDIATELY`,
+        );
+
+        // CRITICAL: Clean up timers since we're proceeding early
+        console.log(
+          `BACKEND: Cleaning up timers for early completion of duel ${duelId}`,
+        );
+        cleanupDuelTimers(duelId);
+
+        // Process results immediately
+        await processRoundResult(duelId, session, io);
+        return; // Successfully processed
+      }
+
+      // If not both answered and we have retries left, wait and try again
+      if (attempt < maxRetries) {
+        console.log(
+          `BACKEND: Not both answered yet, retrying in 200ms... (attempt ${attempt}/${maxRetries})`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
     }
+
+    console.log(
+      `BACKEND: After ${maxRetries} attempts, both players have not answered yet for duel ${duelId}`,
+    );
   } catch (error) {
-    console.error('Error checking and processing round result:', error);
-    // If something goes wrong, unlock to prevent a permanent freeze
+    console.error('BACKEND ERROR in enhanced round result check:', error);
+    // Unlock on error to prevent permanent freeze
     if (session) {
       session.processingLock = false;
       activeSessions.set(duelId, session);
@@ -661,47 +725,92 @@ async function checkAndProcessRoundResult(duelId, session, io) {
   }
 }
 
-// ✅ UPDATED: processRoundResult with 30s timing from service
+// FIXED: processRoundResult with immediate next question when not final
 async function processRoundResult(duelId, session, io) {
   try {
+    console.log(
+      `BACKEND: Processing round result for duel ${duelId}, question ${session.currentQuestionIndex}`,
+    );
+
     const roomName = `duel_${duelId}`;
     const roundResults = await duelSessionService.getRoundResults(
       session.sessionId,
       session.currentQuestionIndex,
     );
 
-    io.to(roomName).emit('round_result', roundResults);
+    console.log(`BACKEND: Round ${session.currentQuestionIndex + 1} results:`, {
+      questionId: roundResults.question?.text?.substring(0, 50) + '...',
+      answers: roundResults.answers?.map((a) => ({
+        userId: a.userId,
+        correct: a.isCorrect,
+        answer: a.selectedAnswer,
+      })),
+    });
 
+    // Emit round results immediately
+    io.to(roomName).emit('round_result', roundResults);
+    console.log(`BACKEND: Round result emitted to room ${roomName}`);
+
+    // Move to next question
     session.currentQuestionIndex += 1;
     activeSessions.set(duelId, session);
 
     const isDuelOver = session.currentQuestionIndex >= session.questions.length;
 
-    // ✅ FIXED: Use service constant instead of hardcoded 3000ms
-    const roundDisplayTime = duelSessionService.getRoundResultDisplayTime();
-    console.log(
-      `⏱️ Round results will display for ${roundDisplayTime / 1000} seconds`,
-    );
+    if (isDuelOver) {
+      console.log(
+        `BACKEND: Duel ${duelId} completed after ${session.questions.length} questions`,
+      );
 
-    setTimeout(async () => {
-      if (isDuelOver) {
+      // Use round display time for final results
+      const roundDisplayTime = duelSessionService.getRoundResultDisplayTime();
+      console.log(
+        `BACKEND: Final results will display for ${
+          roundDisplayTime / 1000
+        }s before completion`,
+      );
+
+      setTimeout(async () => {
         await completeDuel(duelId, roomName, io);
-      } else {
-        await presentNextQuestion(duelId, roomName, io, {
-          isOpponentBot: true,
-          duel: await duelSessionService.getDuelById(duelId),
-        });
-      }
-    }, roundDisplayTime); // ✅ NOW USES 30 SECONDS FROM SERVICE
+      }, roundDisplayTime);
+    } else {
+      console.log(
+        `BACKEND: Moving to question ${session.currentQuestionIndex + 1}/${
+          session.questions.length
+        } immediately`,
+      );
+
+      // CRITICAL: For non-final questions, proceed immediately to next question
+      // Reset processing lock before presenting next question
+      session.processingLock = false;
+      activeSessions.set(duelId, session);
+
+      const duel = await duelSessionService.getDuelById(duelId);
+      const isOpponentBot = await botService.isBot(duel.opponent_id);
+
+      // Present next question immediately - no delay
+      await presentNextQuestion(duelId, roomName, io, {
+        isOpponentBot,
+        duel,
+      });
+    }
   } catch (error) {
-    console.error('Error processing round result:', error);
+    console.error('BACKEND ERROR processing round result:', error);
+
+    // Reset processing lock on error
+    if (session) {
+      session.processingLock = false;
+      activeSessions.set(duelId, session);
+    }
+
     io.to(`duel_${duelId}`).emit('room_error', {
       message: 'Error processing round result.',
+      code: 'ROUND_PROCESS_ERROR',
     });
   }
 }
 
-// ✅ UPDATED: Enhanced completeDuel with timer cleanup
+// Enhanced completeDuel with timer cleanup
 async function completeDuel(duelId, roomName, io) {
   try {
     // Clean up any active timers
@@ -710,7 +819,7 @@ async function completeDuel(duelId, roomName, io) {
     const session = activeSessions.get(duelId);
     if (!session) return;
 
-    console.log(`🏁 Completing duel ${duelId}`);
+    console.log(`BACKEND: Completing duel ${duelId}`);
 
     const finalResults = await duelSessionService.calculateFinalResults(
       session.sessionId,
@@ -722,8 +831,11 @@ async function completeDuel(duelId, roomName, io) {
         finalResults,
       );
       io.to(roomName).emit('duel_completed', finalResults);
+      console.log(`BACKEND: Duel ${duelId} completed successfully`);
     } else {
-      console.error(`Could not calculate final results for duel ${duelId}`);
+      console.error(
+        `BACKEND: Could not calculate final results for duel ${duelId}`,
+      );
       io.to(roomName).emit('room_error', {
         message: 'Could not calculate final results.',
       });
@@ -733,14 +845,14 @@ async function completeDuel(duelId, roomName, io) {
     setTimeout(() => {
       activeSessions.delete(duelId);
       cleanupDuelTimers(duelId); // Extra cleanup
-      console.log(`🧹 Cleaned up completed session for duel ${duelId}`);
+      console.log(`BACKEND: Cleaned up completed session for duel ${duelId}`);
     }, 60000);
   } catch (error) {
-    console.error('Error completing duel:', error);
+    console.error('BACKEND ERROR completing duel:', error);
     cleanupDuelTimers(duelId);
   }
 }
 
 module.exports = setupDuelSockets;
 
-// =================== END: UPDATED duelSocketHandler.js with 30s ROUND RESULT TIMING ===================
+// =================== END: FIXED duelSocketHandler.js - IMMEDIATE ROUND RESULTS ===================
