@@ -738,15 +738,6 @@ async function processRoundResult(duelId, session, io) {
       session.currentQuestionIndex,
     );
 
-    console.log(`BACKEND: Round ${session.currentQuestionIndex + 1} results:`, {
-      questionId: roundResults.question?.text?.substring(0, 50) + '...',
-      answers: roundResults.answers?.map((a) => ({
-        userId: a.userId,
-        correct: a.isCorrect,
-        answer: a.selectedAnswer,
-      })),
-    });
-
     // Emit round results immediately
     io.to(roomName).emit('round_result', roundResults);
     console.log(`BACKEND: Round result emitted to room ${roomName}`);
@@ -757,52 +748,46 @@ async function processRoundResult(duelId, session, io) {
 
     const isDuelOver = session.currentQuestionIndex >= session.questions.length;
 
-    if (isDuelOver) {
-      console.log(
-        `BACKEND: Duel ${duelId} completed after ${session.questions.length} questions`,
-      );
+    // FIXED: Use 30-second display time for ALL questions (not just final)
+    const roundDisplayTime = duelSessionService.getRoundResultDisplayTime(); // 30 seconds
+    console.log(
+      `BACKEND: Results will display for ${roundDisplayTime / 1000}s before ${
+        isDuelOver ? 'completion' : 'next question'
+      }`,
+    );
 
-      // Use round display time for final results
-      const roundDisplayTime = duelSessionService.getRoundResultDisplayTime();
-      console.log(
-        `BACKEND: Final results will display for ${
-          roundDisplayTime / 1000
-        }s before completion`,
-      );
-
-      setTimeout(async () => {
+    setTimeout(async () => {
+      if (isDuelOver) {
+        console.log(`BACKEND: Completing duel ${duelId} after results display`);
         await completeDuel(duelId, roomName, io);
-      }, roundDisplayTime);
-    } else {
-      console.log(
-        `BACKEND: Moving to question ${session.currentQuestionIndex + 1}/${
-          session.questions.length
-        } immediately`,
-      );
+      } else {
+        console.log(
+          `BACKEND: Moving to question ${session.currentQuestionIndex + 1}/${
+            session.questions.length
+          } after results display`,
+        );
 
-      // CRITICAL: For non-final questions, proceed immediately to next question
-      // Reset processing lock before presenting next question
-      session.processingLock = false;
-      activeSessions.set(duelId, session);
+        // Reset processing lock before presenting next question
+        session.processingLock = false;
+        activeSessions.set(duelId, session);
 
-      const duel = await duelSessionService.getDuelById(duelId);
-      const isOpponentBot = await botService.isBot(duel.opponent_id);
+        const duel = await duelSessionService.getDuelById(duelId);
+        const isOpponentBot = await botService.isBot(duel.opponent_id);
 
-      // Present next question immediately - no delay
-      await presentNextQuestion(duelId, roomName, io, {
-        isOpponentBot,
-        duel,
-      });
-    }
+        // Present next question after results display time
+        await presentNextQuestion(duelId, roomName, io, {
+          isOpponentBot,
+          duel,
+        });
+      }
+    }, roundDisplayTime); // 30 seconds for ALL round results
   } catch (error) {
     console.error('BACKEND ERROR processing round result:', error);
-
     // Reset processing lock on error
     if (session) {
       session.processingLock = false;
       activeSessions.set(duelId, session);
     }
-
     io.to(`duel_${duelId}`).emit('room_error', {
       message: 'Error processing round result.',
       code: 'ROUND_PROCESS_ERROR',
