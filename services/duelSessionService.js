@@ -204,14 +204,57 @@ const duelSessionService = {
     timeTaken,
   ) {
     try {
+      console.log(
+        `📝 SUBMIT ANSWER: session=${sessionId}, user=${userId}, question=${questionId}, index=${questionIndex}, answer="${selectedAnswer}", time=${timeTaken}ms`,
+      );
+
+      // Check if this user already answered this question
+      const { data: existingAnswers, error: checkError } = await supabase
+        .from('duel_answers')
+        .select('user_id, created_at')
+        .eq('session_id', sessionId)
+        .eq('question_index', questionIndex)
+        .eq('user_id', userId);
+
+      if (checkError) {
+        console.error('📝 Error checking existing answers:', checkError);
+      } else {
+        console.log(
+          `📝 EXISTING ANSWERS for user ${userId}: ${
+            existingAnswers?.length || 0
+          } found`,
+        );
+        existingAnswers?.forEach((existing, index) => {
+          console.log(
+            `📝 Existing answer ${index + 1}: created at ${
+              existing.created_at
+            }`,
+          );
+        });
+
+        if (existingAnswers && existingAnswers.length > 0) {
+          console.warn(
+            `⚠️  WARNING: User ${userId} already answered question ${questionIndex}! This might be a duplicate.`,
+          );
+        }
+      }
+
+      // Get correct answer for comparison
       const { data: question, error: questionError } = await supabase
         .from('test_questions')
         .select('correct_answer')
         .eq('question_id', questionId)
         .single();
+
       if (questionError) throw questionError;
+
       const isCorrect = selectedAnswer === question.correct_answer;
-      const { error } = await supabase.from('duel_answers').insert({
+      console.log(
+        `📝 ANSWER EVALUATION: selected="${selectedAnswer}", correct="${question.correct_answer}", isCorrect=${isCorrect}`,
+      );
+
+      // Insert the new answer
+      const insertData = {
         session_id: sessionId,
         user_id: userId,
         question_id: questionId,
@@ -219,25 +262,67 @@ const duelSessionService = {
         selected_answer: selectedAnswer,
         is_correct: isCorrect,
         answer_time_ms: timeTaken,
-      });
-      if (error) throw error;
+      };
+
+      console.log(`📝 INSERTING ANSWER:`, insertData);
+
+      const { error: insertError } = await supabase
+        .from('duel_answers')
+        .insert(insertData);
+
+      if (insertError) {
+        console.error('📝 INSERT ERROR:', insertError);
+        throw insertError;
+      }
+
+      console.log(`✅ ANSWER INSERTED successfully for user ${userId}`);
     } catch (error) {
-      console.error('Error submitting answer:', error);
+      console.error('📝 Error submitting answer:', error);
       throw error;
     }
   },
 
   async checkBothAnswered(sessionId, questionIndex) {
     try {
-      const { count, error } = await supabase
+      console.log(
+        `🔍 CHECKING BOTH ANSWERED: session=${sessionId}, questionIndex=${questionIndex}`,
+      );
+
+      // Get all answers for this session and question with detailed info
+      const { data: answers, error } = await supabase
         .from('duel_answers')
-        .select('*', { count: 'exact', head: true })
+        .select('user_id, selected_answer, created_at, answer_time_ms')
         .eq('session_id', sessionId)
-        .eq('question_index', questionIndex);
-      if (error) throw error;
-      return count >= 2;
+        .eq('question_index', questionIndex)
+        .order('created_at');
+
+      if (error) {
+        console.error('🔍 Database error in checkBothAnswered:', error);
+        throw error;
+      }
+
+      const count = answers?.length || 0;
+      console.log(
+        `🔍 ANSWERS FOUND: ${count} answers for session ${sessionId}, question ${questionIndex}`,
+      );
+
+      // Log each answer with timestamp
+      answers?.forEach((answer, index) => {
+        console.log(
+          `🔍 Answer ${index + 1}: userId=${answer.user_id}, selected="${
+            answer.selected_answer
+          }", time=${answer.answer_time_ms}ms, created=${answer.created_at}`,
+        );
+      });
+
+      const bothAnswered = count >= 2;
+      console.log(
+        `🔍 BOTH ANSWERED RESULT: ${bothAnswered} (need 2, found ${count})`,
+      );
+
+      return bothAnswered;
     } catch (error) {
-      console.error('Error checking both answered:', error);
+      console.error('🔍 Error checking both answered:', error);
       return false;
     }
   },
