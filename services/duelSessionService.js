@@ -195,6 +195,55 @@ const duelSessionService = {
     }
   },
 
+  // Enhanced checkBothAnswered with detailed debugging
+  async checkBothAnswered(sessionId, questionIndex) {
+    try {
+      console.log(
+        `🔍 CHECKING BOTH ANSWERED: session=${sessionId}, questionIndex=${questionIndex}`,
+      );
+
+      // Get all answers for this session and question with detailed info
+      const { data: answers, error } = await supabase
+        .from('duel_answers')
+        .select('user_id, selected_answer, submitted_at, answer_time_ms')
+        .eq('session_id', sessionId)
+        .eq('question_index', questionIndex)
+        .order('submitted_at');
+
+      if (error) {
+        console.error('🔍 Database error in checkBothAnswered:', error);
+        throw error;
+      }
+
+      const count = answers?.length || 0;
+      console.log(
+        `🔍 ANSWERS FOUND: ${count} answers for session ${sessionId}, question ${questionIndex}`,
+      );
+
+      // Log each answer with timestamp
+      answers?.forEach((answer, index) => {
+        console.log(
+          `🔍 Answer ${index + 1}: userId=${answer.user_id}, selected="${
+            answer.selected_answer
+          }", time=${answer.answer_time_ms}ms, submitted=${
+            answer.submitted_at
+          }`,
+        );
+      });
+
+      const bothAnswered = count >= 2;
+      console.log(
+        `🔍 BOTH ANSWERED RESULT: ${bothAnswered} (need 2, found ${count})`,
+      );
+
+      return bothAnswered;
+    } catch (error) {
+      console.error('🔍 Error checking both answered:', error);
+      return false;
+    }
+  },
+
+  // Also enhance submitAnswer to see what's being inserted
   async submitAnswer(
     sessionId,
     userId,
@@ -211,7 +260,7 @@ const duelSessionService = {
       // Check if this user already answered this question
       const { data: existingAnswers, error: checkError } = await supabase
         .from('duel_answers')
-        .select('user_id, created_at')
+        .select('user_id, submitted_at')
         .eq('session_id', sessionId)
         .eq('question_index', questionIndex)
         .eq('user_id', userId);
@@ -226,8 +275,8 @@ const duelSessionService = {
         );
         existingAnswers?.forEach((existing, index) => {
           console.log(
-            `📝 Existing answer ${index + 1}: created at ${
-              existing.created_at
+            `📝 Existing answer ${index + 1}: submitted at ${
+              existing.submitted_at
             }`,
           );
         });
@@ -279,51 +328,6 @@ const duelSessionService = {
     } catch (error) {
       console.error('📝 Error submitting answer:', error);
       throw error;
-    }
-  },
-
-  async checkBothAnswered(sessionId, questionIndex) {
-    try {
-      console.log(
-        `🔍 CHECKING BOTH ANSWERED: session=${sessionId}, questionIndex=${questionIndex}`,
-      );
-
-      // Get all answers for this session and question with detailed info
-      const { data: answers, error } = await supabase
-        .from('duel_answers')
-        .select('user_id, selected_answer, created_at, answer_time_ms')
-        .eq('session_id', sessionId)
-        .eq('question_index', questionIndex)
-        .order('created_at');
-
-      if (error) {
-        console.error('🔍 Database error in checkBothAnswered:', error);
-        throw error;
-      }
-
-      const count = answers?.length || 0;
-      console.log(
-        `🔍 ANSWERS FOUND: ${count} answers for session ${sessionId}, question ${questionIndex}`,
-      );
-
-      // Log each answer with timestamp
-      answers?.forEach((answer, index) => {
-        console.log(
-          `🔍 Answer ${index + 1}: userId=${answer.user_id}, selected="${
-            answer.selected_answer
-          }", time=${answer.answer_time_ms}ms, created=${answer.created_at}`,
-        );
-      });
-
-      const bothAnswered = count >= 2;
-      console.log(
-        `🔍 BOTH ANSWERED RESULT: ${bothAnswered} (need 2, found ${count})`,
-      );
-
-      return bothAnswered;
-    } catch (error) {
-      console.error('🔍 Error checking both answered:', error);
-      return false;
     }
   },
 
