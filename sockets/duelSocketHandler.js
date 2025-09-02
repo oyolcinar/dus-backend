@@ -1,4 +1,4 @@
-// =================== FIXED duelSocketHandler.js - Bot Timing Issue ===================
+// =================== FULLY FIXED duelSocketHandler.js - Timeout Issue Resolved ===================
 
 const { supabaseUrl, supabaseKey } = require('../config/supabase');
 const { createClient } = require('@supabase/supabase-js');
@@ -24,8 +24,6 @@ const BOT_MIN_THINKING_TIME = 3000; // 3 seconds minimum
 const BOT_MAX_THINKING_TIME = 57000; // 57 seconds maximum (3 second buffer)
 
 const setupDuelSockets = (io) => {
-  // ... [keeping all socket setup and event handlers the same until startDuelSession]
-
   io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth.token;
@@ -60,8 +58,6 @@ const setupDuelSockets = (io) => {
       `User ${socket.userId} (${socket.username}) connected: ${socket.id}`,
     );
     userSockets.set(socket.userId, socket.id);
-
-    // ... [keeping all existing event handlers the same]
 
     socket.on('join_duel_room', async (data) => {
       try {
@@ -325,7 +321,6 @@ const setupDuelSockets = (io) => {
 
           if (session.connectedUsers.size === 0) {
             cleanupDuelTimers(duelId);
-            // 🔧 FIX: Also cleanup bot timeouts
             cleanupBotTimeouts(duelId);
             setTimeout(() => activeSessions.delete(duelId), 30000);
           }
@@ -442,7 +437,8 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
       return;
     }
 
-    // 🔧 FIX: Clean up any previous bot timeouts before starting new question
+    // 🔧 FIX: Clean up any stale timeouts FIRST before starting new question
+    cleanupDuelTimers(duelId);
     cleanupBotTimeouts(duelId);
 
     session.processingLock = false;
@@ -457,47 +453,8 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
     const questionStartTime = Date.now();
     const timeLimit = QUESTION_TIME_LIMIT;
 
-    activeQuestionTimers.set(duelId, {
-      startTime: questionStartTime,
-      timeLimit,
-      questionIndex: session.currentQuestionIndex,
-      endTime: questionStartTime + timeLimit,
-    });
-
-    io.to(roomName).emit('question_presented', {
-      questionIndex: session.currentQuestionIndex,
-      totalQuestions: session.questions.length,
-      question: {
-        id: currentQuestion.question_id,
-        text: currentQuestion.question_text,
-        options: currentQuestion.options,
-      },
-      timeLimit: timeLimit,
-      serverStartTime: questionStartTime,
-      serverEndTime: questionStartTime + timeLimit,
-    });
-
-    console.log(
-      `Question ${
-        session.currentQuestionIndex + 1
-      } sent to room ${roomName} with 60s server-controlled timing`,
-    );
-
-    startServerTimerBroadcast(duelId, roomName, io, timeLimit);
-
-    // 🔧 FIX: Only start bot thinking ONCE per question with proper cleanup
-    if (botInfo.isOpponentBot) {
-      console.log(
-        `🤖 BACKEND: Starting bot thinking for question ${session.currentQuestionIndex}`,
-      );
-
-      // Start bot thinking with a small delay to ensure question is fully presented
-      setTimeout(() => {
-        startBotThinkingForCurrentQuestion(duelId, roomName, io);
-      }, 1000);
-    }
-
-    setTimeout(async () => {
+    // 🔧 FIX: Create the 60-second timeout and store its reference
+    const questionTimeout = setTimeout(async () => {
       const currentSession = activeSessions.get(duelId);
       const timerInfo = activeQuestionTimers.get(duelId);
 
@@ -525,8 +482,54 @@ async function presentNextQuestion(duelId, roomName, io, botInfo = {}) {
         await checkAndProcessRoundResultEnhanced(duelId, currentSession, io);
 
         activeQuestionTimers.delete(duelId);
+      } else {
+        console.log(
+          `BACKEND: 60s timeout cancelled for duel ${duelId} - state changed`,
+        );
       }
     }, timeLimit);
+
+    // 🔧 FIX: Store ALL timer references including the question timeout
+    activeQuestionTimers.set(duelId, {
+      startTime: questionStartTime,
+      timeLimit,
+      questionIndex: session.currentQuestionIndex,
+      endTime: questionStartTime + timeLimit,
+      questionTimeout, // 🔧 Store the timeout reference for cancellation
+      broadcastInterval: null, // Will be set by startServerTimerBroadcast
+    });
+
+    io.to(roomName).emit('question_presented', {
+      questionIndex: session.currentQuestionIndex,
+      totalQuestions: session.questions.length,
+      question: {
+        id: currentQuestion.question_id,
+        text: currentQuestion.question_text,
+        options: currentQuestion.options,
+      },
+      timeLimit: timeLimit,
+      serverStartTime: questionStartTime,
+      serverEndTime: questionStartTime + timeLimit,
+    });
+
+    console.log(
+      `Question ${
+        session.currentQuestionIndex + 1
+      } sent to room ${roomName} with 60s server-controlled timing`,
+    );
+
+    startServerTimerBroadcast(duelId, roomName, io, timeLimit);
+
+    // Start bot thinking with proper cleanup
+    if (botInfo.isOpponentBot) {
+      console.log(
+        `🤖 BACKEND: Starting bot thinking for question ${session.currentQuestionIndex}`,
+      );
+
+      setTimeout(() => {
+        startBotThinkingForCurrentQuestion(duelId, roomName, io);
+      }, 1000);
+    }
   } catch (error) {
     console.error(`Error presenting question for duel ${duelId}:`, error);
     io.to(roomName).emit('room_error', {
@@ -558,20 +561,30 @@ function startServerTimerBroadcast(duelId, roomName, io, timeLimit) {
     });
   }, 1000);
 
+  // Store the interval reference
   if (timerInfo) {
     timerInfo.broadcastInterval = timerInterval;
   }
 }
 
+// 🔧 FIX: Enhanced cleanup function - cancel ALL timeouts and intervals
 function cleanupDuelTimers(duelId) {
   const timerInfo = activeQuestionTimers.get(duelId);
-  if (timerInfo && timerInfo.broadcastInterval) {
-    clearInterval(timerInfo.broadcastInterval);
+  if (timerInfo) {
+    // Clear broadcast interval
+    if (timerInfo.broadcastInterval) {
+      clearInterval(timerInfo.broadcastInterval);
+    }
+    // 🔧 FIX: Clear the 60s question timeout
+    if (timerInfo.questionTimeout) {
+      clearTimeout(timerInfo.questionTimeout);
+      console.log(`🔧 CLEANUP: Cancelled stale 60s timeout for duel ${duelId}`);
+    }
   }
   activeQuestionTimers.delete(duelId);
 }
 
-// 🔧 FIX: New function to cleanup bot timeouts
+// Bot timeout cleanup function
 function cleanupBotTimeouts(duelId) {
   const botTimeoutInfo = activeBotTimeouts.get(duelId);
   if (botTimeoutInfo) {
@@ -585,7 +598,7 @@ function cleanupBotTimeouts(duelId) {
   }
 }
 
-// 🔧 FIX: Completely rewritten bot thinking logic with timeout tracking
+// Bot thinking logic with timeout tracking
 async function startBotThinkingForCurrentQuestion(duelId, roomName, io) {
   try {
     const session = activeSessions.get(duelId);
@@ -614,7 +627,7 @@ async function startBotThinkingForCurrentQuestion(duelId, roomName, io) {
       return;
     }
 
-    // 🔧 FIX: Check if bot thinking is already in progress for this duel
+    // Check if bot thinking is already in progress for this duel
     if (activeBotTimeouts.has(duelId)) {
       console.log(
         `🤖 BACKEND: Bot thinking already in progress for duel ${duelId}, skipping`,
@@ -642,10 +655,10 @@ async function startBotThinkingForCurrentQuestion(duelId, roomName, io) {
       )}s for question index ${questionIndex}`,
     );
 
-    // 🔧 FIX: Store the timeout so we can cancel it if needed
+    // Store the timeout so we can cancel it if needed
     const thinkingTimeout = setTimeout(async () => {
       try {
-        // 🔧 FIX: Double-check the session state hasn't changed
+        // Double-check the session state hasn't changed
         const currentSession = activeSessions.get(duelId);
         if (!currentSession) {
           console.log(
@@ -726,7 +739,7 @@ async function startBotThinkingForCurrentQuestion(duelId, roomName, io) {
       }
     }, botAnswer.thinkingTime);
 
-    // 🔧 FIX: Track the timeout so we can cancel it later
+    // Track the timeout so we can cancel it later
     activeBotTimeouts.set(duelId, {
       thinkingTimeout,
       questionIndex,
@@ -781,8 +794,8 @@ async function checkAndProcessRoundResultEnhanced(
         console.log(
           `BACKEND: Cleaning up timers for early completion of duel ${duelId}`,
         );
+        // Clean up ALL timers immediately when round completes early
         cleanupDuelTimers(duelId);
-        // 🔧 FIX: Also cleanup bot timeouts when round completes
         cleanupBotTimeouts(duelId);
 
         await processRoundResult(duelId, session, io);
@@ -875,7 +888,6 @@ async function processRoundResult(duelId, session, io) {
 async function completeDuel(duelId, roomName, io) {
   try {
     cleanupDuelTimers(duelId);
-    // 🔧 FIX: Also cleanup bot timeouts on duel completion
     cleanupBotTimeouts(duelId);
 
     const session = activeSessions.get(duelId);
@@ -919,4 +931,4 @@ async function completeDuel(duelId, roomName, io) {
 
 module.exports = setupDuelSockets;
 
-// =================== END: FIXED duelSocketHandler.js ===================
+// =================== END: FULLY FIXED duelSocketHandler.js ===================
