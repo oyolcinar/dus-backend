@@ -30,7 +30,7 @@ const authController = {
       );
       return 'dus-app'; // A safe fallback, but you should set the variable.
     }
-    const path = isPasswordReset ? '://reset-password' : '://oauth/callback';
+    const path = isPasswordReset ? '://reset-password' : '://oauth-callback';
     return `${appScheme}${path}`;
   },
 
@@ -256,8 +256,12 @@ const authController = {
         return `${scheme}://oauth-callback`;
       };
 
-      const appCallbackUrl = getAppScheme();
+      const appCallbackUrl = authController.getFrontendUrl(false);
       console.log('🔗 Using app callback URL:', appCallbackUrl);
+      console.log(
+        '🔧 DEBUG: MOBILE_APP_SCHEME =',
+        process.env.MOBILE_APP_SCHEME,
+      );
 
       if (error) {
         console.error('❌ OAuth error:', { error, error_description });
